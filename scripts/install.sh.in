@@ -44,9 +44,10 @@ main() {
     fi
     if test -e "$destination" || test -L "$destination"; then
         test -d "$destination/.git" && test ! -L "$destination" || { echo "Destination collision: $destination" >&2; return 1; }
+        checkout_status=$(git -C "$destination" status --porcelain)
         test "$(git -C "$destination" remote get-url origin)" = 'https://github.com/abdwhb-png/dev-tools.git' &&
         test "$(git -C "$destination" rev-parse HEAD)" = "$revision" &&
-        test -z "$(git -C "$destination" status --porcelain)" || {
+        test -z "$checkout_status" || {
             echo 'Existing checkout differs or is modified; no automatic release upgrade or overwrite.' >&2
             return 1
         }

@@ -43,7 +43,6 @@ jobs:
           set -euo pipefail
           mv .ci-installer install.sh
           sha256sum install.sh > SHA256SUMS
-          gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled | grep -x true
           gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "$VERSION" --notes "Qualified Ubuntu/WSL2 installer. Source: $GITHUB_SHA. CI: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           gh release upload "$VERSION" install.sh SHA256SUMS --repo "$GITHUB_REPOSITORY"
           gh release edit "$VERSION" --draft=false --latest --repo "$GITHUB_REPOSITORY"

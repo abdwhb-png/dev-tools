@@ -44,6 +44,8 @@ class InstalledCheckout(unittest.TestCase):
         git.write_text('''#!/usr/bin/python3
 import os, subprocess, sys
 args = sys.argv[1:]
+if 'status' in args and os.environ.get('FAIL_GIT_STATUS'):
+    sys.exit(9)
 if args[0] == 'clone':
     args[2] = os.environ['FIXTURE_REPO']
     subprocess.run(['/usr/bin/git', *args], check=True)
@@ -116,3 +118,9 @@ sys.exit(subprocess.call(['/usr/bin/git', *args]))
         self.assertFalse(self.destination.exists())
         self.assertFalse(self.trace.exists())
         self.assertEqual(list(self.destination.parent.glob('.source.*')), [])
+
+    def test_failed_checkout_inspection_is_not_treated_as_clean(self):
+        self.assertEqual(self.invoke('--yes').returncode, 0)
+        self.env['FAIL_GIT_STATUS'] = '1'
+        self.assertNotEqual(self.invoke('--yes').returncode, 0)
+        self.assertEqual(self.trace.read_text(), 'ran')
