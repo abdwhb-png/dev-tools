@@ -2,6 +2,7 @@ import contextlib
 import importlib.util
 import io
 import os
+import re
 import subprocess
 from pathlib import Path
 import tempfile
@@ -171,7 +172,9 @@ class Commands(unittest.TestCase):
                 with self.subTest(cwd=cwd):
                     result = subprocess.run([os.environ['DEV_TOOLS_MISE'], 'run', '--dry-run', 'dev-tools:check', '--tools-only'], cwd=cwd, env=env, capture_output=True, text=True)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertIn(str(ROOT / 'scripts/dev_tools.py'), result.stdout + result.stderr)
+                    script = re.search(r'"([^"]+/scripts/dev_tools.py)"', result.stdout + result.stderr)
+                    self.assertIsNotNone(script, result.stdout + result.stderr)
+                    self.assertEqual(Path(script.group(1)).resolve(), ROOT / 'scripts/dev_tools.py')
 
     @unittest.skipUnless(os.environ.get('DEV_TOOLS_MISE'), 'requires verified mise')
     def test_shell_setup_preserves_ubuntu_profile_and_sets_launcher_path(self):
