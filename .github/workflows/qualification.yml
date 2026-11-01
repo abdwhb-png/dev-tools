@@ -1,5 +1,10 @@
 name: Development tools qualification
 on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: v0.0.0-ci
   workflow_dispatch:
   push:
     branches: [main]
@@ -9,6 +14,20 @@ on:
 permissions:
   contents: read
 jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 scripts/build_installer.py --revision "$GITHUB_SHA" --version "$VERSION" --output .ci-installer
+        env:
+          VERSION: ${{ inputs.version || 'v0.0.0-ci' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-candidate
+          path: .ci-installer
+          include-hidden-files: true
   isolated:
     timeout-minutes: 10
     runs-on: ubuntu-24.04
@@ -17,8 +36,10 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 -m unittest discover -s tests -v
-      - run: bash -n bootstrap.sh scripts/qualify.sh
+      - run: sh -n bootstrap.sh scripts/install.sh.in
+      - run: bash -n scripts/qualify.sh
   ubuntu:
+    needs: build
     timeout-minutes: 30
     runs-on: ubuntu-24.04
     strategy:
@@ -37,6 +58,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-candidate
       - name: Copy source to writable isolated home
         run: |
           cp -a . /home/qualifier/source
@@ -44,13 +68,16 @@ jobs:
       - name: Qualify actual installation
         env:
           GH_TOKEN: ${{ github.token }}
-        run: sudo -H -u qualifier --preserve-env=GH_TOKEN,GITHUB_REPOSITORY env GITHUB_ACTIONS=true CI=true bash -c 'cd /home/qualifier/source && bash scripts/qualify.sh ubuntu'
+        run: |
+          apt-get remove -y git
+          sudo -H -u qualifier --preserve-env=GH_TOKEN,GITHUB_REPOSITORY env GITHUB_ACTIONS=true CI=true bash -c 'cd /home/qualifier/source && bash scripts/qualify.sh ubuntu'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ubuntu-${{ matrix.release }}-evidence
           path: /home/qualifier/source/evidence/
   wsl2:
+    needs: build
     timeout-minutes: 30
     runs-on: windows-2025
     strategy:
@@ -61,6 +88,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-candidate
       - name: Prepare real WSL2 distribution
         shell: pwsh
         run: |
@@ -76,7 +106,7 @@ jobs:
         shell: pwsh
         run: |
           $source = (wsl -d Ubuntu-${{ matrix.release }} --exec wslpath -a "$env:GITHUB_WORKSPACE").Trim()
-          wsl -d Ubuntu-${{ matrix.release }} -u root --exec bash -lc "cp -a '$source' /home/qualifier/source; chown -R qualifier:qualifier /home/qualifier/source"
+          wsl -d Ubuntu-${{ matrix.release }} -u root --exec bash -lc "set -e; cp -a '$source' /home/qualifier/source; chown -R qualifier:qualifier /home/qualifier/source; apt-get remove -y git"
           if ($LASTEXITCODE -ne 0) { throw 'WSL source copy failed' }
           wsl -d Ubuntu-${{ matrix.release }} -u qualifier --exec bash -lc 'cd /home/qualifier/source && env GITHUB_ACTIONS=true CI=true bash scripts/qualify.sh wsl2'
           if ($LASTEXITCODE -ne 0) { throw 'WSL qualification failed' }

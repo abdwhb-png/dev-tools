@@ -1,0 +1,70 @@
+#!/bin/sh
+set -eu
+
+main() {
+    revision='@REVISION@'
+    version='@VERSION@'
+    destination="${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/source"
+    yes=0
+    preview=0
+    for option in "$@"; do
+        case "$option" in
+            --yes) yes=1 ;;
+            --dry-run) preview=1 ;;
+            --help) echo 'Usage: sh install.sh [--dry-run] [--yes]'; return 0 ;;
+            *) echo "Unknown option: $option" >&2; return 1 ;;
+        esac
+    done
+    . /etc/os-release
+    case "${ID:-}:${VERSION_ID:-}:$(uname -s):$(uname -m)" in
+        ubuntu:24.04:Linux:x86_64|ubuntu:26.04:Linux:x86_64) ;;
+        *) echo 'Supported hosts: Ubuntu 24.04/26.04 x86_64, including WSL2.' >&2; return 1 ;;
+    esac
+    missing=''
+    command -v git >/dev/null 2>&1 || missing="$missing git"
+    test -x /usr/bin/python3 || missing="$missing python3"
+    test -s /etc/ssl/certs/ca-certificates.crt || missing="$missing ca-certificates"
+    printf 'Install %s (%s) into %s\nMissing prerequisites:%s\n' "$version" "$revision" "$destination" "${missing:- none}"
+    test "$preview" = 0 || return 0
+    test "$(id -u)" != 0 || { echo 'Run as a regular user with sudo access, not root.' >&2; return 1; }
+    command -v sudo >/dev/null 2>&1 || { echo 'sudo is required; ask the administrator to grant sudo access.' >&2; return 1; }
+    if test "$yes" = 0; then
+        if ! ( : </dev/tty ) 2>/dev/null; then
+            echo 'An interactive terminal is required; use --yes for unattended installation.' >&2
+            return 1
+        fi
+        printf 'Install prerequisites and developer tools? [y/N] ' >/dev/tty
+        read -r answer </dev/tty
+        case "$answer" in y|Y|yes|YES) ;; *) echo 'Cancelled; no changes applied.'; return 1 ;; esac
+    fi
+    if test -n "$missing"; then
+        sudo apt-get update
+        # This list contains only fixed package names, never caller input.
+        sudo apt-get install --yes --no-install-recommends $missing
+    fi
+    if test -e "$destination" || test -L "$destination"; then
+        test -d "$destination/.git" && test ! -L "$destination" || { echo "Destination collision: $destination" >&2; return 1; }
+        test "$(git -C "$destination" remote get-url origin)" = 'https://github.com/abdwhb-png/dev-tools.git' &&
+        test "$(git -C "$destination" rev-parse HEAD)" = "$revision" &&
+        test -z "$(git -C "$destination" status --porcelain)" || {
+            echo 'Existing checkout differs or is modified; no automatic release upgrade or overwrite.' >&2
+            return 1
+        }
+    else
+        mkdir -p "$(dirname "$destination")"
+        staging=$(mktemp -d "$(dirname "$destination")/.source.XXXXXX")
+        trap 'rm -rf "$staging"' 0
+        trap 'exit 1' HUP INT TERM
+        git clone --no-checkout 'https://github.com/abdwhb-png/dev-tools.git' "$staging"
+        git -C "$staging" fetch --depth=1 origin "$revision"
+        git -C "$staging" checkout --detach FETCH_HEAD
+        test "$(git -C "$staging" rev-parse HEAD)" = "$revision" || { echo 'Source revision mismatch.' >&2; return 1; }
+        mv "$staging" "$destination"
+        trap - 0 HUP INT TERM
+    fi
+    sh "$destination/bootstrap.sh" --yes
+    printf '\nInstalled %s (%s). Open a new terminal, then run:\nmise run dev-tools:github\nmise run dev-tools:check\n' "$version" "$revision"
+}
+
+# Parse the complete script before allowing child processes to consume input.
+main "$@"

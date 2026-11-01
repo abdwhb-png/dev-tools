@@ -11,14 +11,13 @@ uname -a
 if [[ ${1:?platform required} == wsl2 ]]; then
   uname -r | grep -i microsoft-standard-WSL2
 fi
-python3 -m unittest discover -s tests -v
-bash bootstrap.sh --dry-run
-bash bootstrap.sh --yes
+sh .ci-installer --dry-run
+sh .ci-installer --yes
 export PATH="$HOME/.local/bin:$PATH"
 export DEV_TOOLS_MISE="$HOME/.local/bin/mise"
-python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s "${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/source/tests" -v
 python3 scripts/dev_tools.py check --tools-only
-bash bootstrap.sh --yes
+cat .ci-installer | sh -s -- --yes
 # Every real command is evaluated through the installed environment.
 mise exec -- php -r 'if ((new PDO("sqlite::memory:"))->query("select 1")->fetchColumn() != 1) exit(1); $i = new Imagick(); $i->newImage(1, 1, "white"); if (!class_exists("Redis") || !class_exists("MongoDB\\Driver\\Manager")) exit(1);'
 mise exec -- python3 -c 'import ssl, sqlite3; print(ssl.OPENSSL_VERSION)'
@@ -40,13 +39,18 @@ mise exec -- composer --no-plugins --no-scripts validate --strict --no-check-pub
 mise run dev-tools:github
 git config --get-all credential.https://github.com.helper > evidence/github-helper.txt
 python3 scripts/dev_tools.py check
-[[ $(mise exec -- gh api "repos/${GITHUB_REPOSITORY}" --jq '.private') == true ]] || { echo 'Authenticated clone qualification requires this private repository.' >&2; exit 1; }
-if GIT_TERMINAL_PROMPT=0 mise -C "$fixture" exec -- git -c credential.helper= -c http.https://github.com/.extraheader= clone --quiet --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$fixture/unauthenticated-clone" 2> evidence/unauthenticated-clone.txt; then
-  echo 'Private repository was readable without the credential helper; authentication test is invalid.' >&2
-  exit 1
-fi
-GIT_TERMINAL_PROMPT=0 mise -C "$fixture" exec -- git clone --quiet --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$fixture/authenticated-clone"
-[[ -f "$fixture/authenticated-clone/README.md" ]]
+# Public cloning proves installation does not depend on GitHub credentials.
+GIT_TERMINAL_PROMPT=0 mise -C "$fixture" exec -- git -c credential.helper= -c http.https://github.com/.extraheader= clone --quiet --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$fixture/anonymous-clone"
+# Exercise the native Git credential protocol without printing or storing its token.
+mise exec -- python3 - <<'CREDENTIAL'
+import os, subprocess
+request = 'protocol=https\nhost=github.com\n\n'
+result = subprocess.run(['git', 'credential', 'fill'], input=request, capture_output=True, text=True, check=True)
+fields = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+if fields.get('password') != os.environ['GH_TOKEN']:
+    raise SystemExit('Git credential helper did not supply the CI credential')
+print('Git credential protocol verified; credential value withheld.')
+CREDENTIAL
 printf '[tools]\nnode = "24.18.0"\n' > "$fixture/mise.toml"
 mise trust "$fixture/mise.toml"
 mise -C "$fixture" install node

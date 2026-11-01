@@ -13,12 +13,17 @@ sudo apt-get update
 sudo apt-get install -y ca-certificates curl git python3
 ```
 
-Obtain a reviewed checkout of this repository, enter it, then preview and apply:
+The release installer will be available after the first qualified release is published (none is published yet):
 
 ```sh
-bash bootstrap.sh --dry-run
-bash bootstrap.sh
+curl -fsSL https://github.com/abdwhb-png/dev-tools/releases/latest/download/install.sh -o install.sh
+sh install.sh --dry-run
+sh install.sh
 ```
+
+It supports `curl ... | sh` as well; confirmations read from the terminal. Without a terminal, pass `--yes` explicitly. It installs missing Git, system Python and certificates via sudo after confirmation, retrieves the release's exact Git SHA, and keeps its checkout at `${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/source`. Existing modified checkouts or other releases are never overwritten. Rerunning the same release repairs/repeats installation; upgrading between releases is not implemented.
+
+Alternatively, clone a reviewed revision of this public repository and run `sh bootstrap.sh --dry-run`, then `sh bootstrap.sh` from that checkout. This route requires the prerequisites above. The bootstrap also remains callable with Bash.
 
 The preview performs no network requests and writes no files. It describes intended packages and configuration, not a complete APT dependency simulation. `--yes` explicitly accepts the same changes without a prompt. Keep the checkout at its installed location: the global fragment links to it as the authoritative source. Moving it requires explicitly updating that link.
 
@@ -76,8 +81,12 @@ bash -n bootstrap.sh scripts/qualify.sh
 
 Tests import the production command module. Native mise characterization tests additionally run when `DEV_TOOLS_MISE` names a verified executable; they operate only on temporary fixtures. No package install or GitHub login runs in the local test suite.
 
-The workflow qualifies fresh Ubuntu 24.04/26.04 containers and actual WSL2 24.04/26.04 distributions, repeated installation, Bash/Zsh startup, PHP functionality, compilation, project overrides, and GitHub HTTPS access. Its real-install script refuses ordinary workstation execution. CI uses GitHub's temporary repository token with read-only contents permission to configure gh's native helper and clone this private repository; a control clone without the helper must fail. Personal browser/device login and credential storage still require per-machine qualification. Provider calls are not part of qualification. Preserve logs, actual paths and package inventories as evidence. A failed or unrun job is not qualification. Markdown-only changes skip the installation matrix; runtime, test and workflow changes rerun it.
+The workflow qualifies fresh Ubuntu 24.04/26.04 containers and actual WSL2 24.04/26.04 distributions, repeated installation, Bash/Zsh startup, PHP functionality, compilation, project overrides, and GitHub HTTPS access. Its real-install script refuses ordinary workstation execution. CI uses GitHub's temporary repository token with read-only contents permission to configure gh's native helper and exercise Git’s credential protocol without exposing credentials. An independent anonymous clone verifies public access. Personal browser/device login and credential storage still require per-machine qualification. Provider calls are not part of qualification. Preserve logs, actual paths and package inventories as evidence. A failed or unrun job is not qualification. Markdown-only changes skip the installation matrix; runtime, test and workflow changes rerun it.
 
 For updates, query live official vendor release APIs, npm registry metadata/engines, PHP advisories and repository package indexes. Choose stable releases, inspect applicable security advisories, update the native declarations, regenerate the lockfile with `mise lock` for the download-managed tools, and rerun qualification. Do not install unpinned `latest` tools during ordinary preparation. Use Socket Firewall for supported networked application dependency commands; this repository itself has no such dependency install.
 
 Sources: [mise](https://mise.jdx.dev/), [Sury installation](https://packages.sury.org/php/README.txt), [Git on Ubuntu](https://git-scm.com/install/linux), [PHP security release](https://news-web.php.net/php.announce/513), [Python security release](https://www.python.org/downloads/release/python-3152/), [Composer](https://getcomposer.org/download/), [gh authentication](https://cli.github.com/manual/gh_auth_login).
+
+## Publishing a release
+
+The manual `Publish qualified installer` workflow must run from `main`, with a stable version such as `v0.1.0`. It builds one pinned installer and runs the same four-environment qualification before publishing those exact bytes and SHA256SUMS. Release immutability must already be enabled by a repository administrator. Only the publishing job has contents write permission. Versioned and latest anonymous downloads are compared with the tested installer after publication. Failed jobs prevent publication; an existing tag/draft is not overwritten automatically. This workflow becomes available after the PR is merged; implementation does not authorize automatic merging.
