@@ -159,6 +159,21 @@ class Commands(unittest.TestCase):
             self.assertNotIn('would install', result.stdout + result.stderr)
 
     @unittest.skipUnless(os.environ.get('DEV_TOOLS_MISE'), 'requires verified mise')
+    def test_global_task_uses_its_source_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / 'config/mise/conf.d'
+            config.mkdir(parents=True)
+            (config / 'dev-tools').symlink_to(ROOT, target_is_directory=True)
+            env = {k: v for k, v in os.environ.items() if not k.startswith('MISE_')}
+            env.update(HOME=directory, XDG_CONFIG_HOME=str(root / 'config'), XDG_DATA_HOME=str(root / 'data'), XDG_CACHE_HOME=str(root / 'cache'), MISE_TRUSTED_CONFIG_PATHS=str(ROOT), MISE_CEILING_PATHS=str(ROOT.parent))
+            for cwd in (ROOT, root):
+                with self.subTest(cwd=cwd):
+                    result = subprocess.run([os.environ['DEV_TOOLS_MISE'], 'run', '--dry-run', 'dev-tools:check', '--tools-only'], cwd=cwd, env=env, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn(str(ROOT / 'scripts/dev_tools.py'), result.stdout + result.stderr)
+
+    @unittest.skipUnless(os.environ.get('DEV_TOOLS_MISE'), 'requires verified mise')
     def test_shell_setup_preserves_ubuntu_profile_and_sets_launcher_path(self):
         mise = Path(os.environ['DEV_TOOLS_MISE'])
         with tempfile.TemporaryDirectory() as directory:

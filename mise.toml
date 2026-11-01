@@ -7,6 +7,7 @@ not_found_system_fallback = false
 task.run_auto_install = false
 
 [vars]
+dev_tools_root = "{{ config_source | dirname }}"
 mise_version = "2026.10.25"
 mise_sha256 = "3c4d4abd8950e722543aa2ffe58dd9ee84430fc03c8a94d318f64b279229d8ff"
 
@@ -44,12 +45,12 @@ fingerprint = "F911AB184317630C59970973E363C90F8F1B6217"
 includes = ["tasks"]
 
 [tasks."dev-tools:check"]
-run = '"/usr/bin/python3" "{{ config_root }}/scripts/dev_tools.py" check'
+run = '"/usr/bin/python3" "{{ vars.dev_tools_root }}/scripts/dev_tools.py" check'
 
 [tasks."dev-tools:github"]
 raw = true
-run = '"/usr/bin/python3" "{{ config_root }}/scripts/dev_tools.py" github'
+run = '"/usr/bin/python3" "{{ vars.dev_tools_root }}/scripts/dev_tools.py" github'
 
 [tasks."dev-tools:php-prepare"]
 raw = true
-run = '"/usr/bin/python3" "{{ config_root }}/scripts/dev_tools.py" php-prepare'
+run = '"/usr/bin/python3" "{{ vars.dev_tools_root }}/scripts/dev_tools.py" php-prepare'
