@@ -1,0 +1,2 @@
+# Native mise requires a TOML filename for explicit global/system configuration.
+# Used only while operating on this repository's configuration in isolation.

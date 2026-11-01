@@ -1,0 +1,55 @@
+min_version = "2026.10.25"
+
+[settings]
+idiomatic_version_file_enable_tools = ["node", "npm", "pnpm", "bun", "python"]
+auto_install_disable_tools = ["php"]
+not_found_system_fallback = false
+task.run_auto_install = false
+
+[vars]
+mise_version = "2026.10.25"
+mise_sha256 = "3c4d4abd8950e722543aa2ffe58dd9ee84430fc03c8a94d318f64b279229d8ff"
+
+mise_binary_sha256 = "5d362ecc578dc7c146679b841dda949d6472cbf86ff5635db7afdca1b6b3fd87"
+
+[tools]
+node = "26.13.0"
+npm = "12.2.1"
+pnpm = "12.16.1"
+bun = "1.4.4"
+python = "3.15.2"
+go = "1.27.3"
+github-cli = "2.103.3"
+ripgrep = "15.2.0"
+jq = "1.8.2"
+php = "8.5.12"
+
+[tools."http:composer"]
+version = "2.11.1"
+url = "https://getcomposer.org/download/{{ version }}/composer.phar"
+bin = "composer"
+checksum = "sha256:6f1b891e1d4927d62740276c540fb490e47689e19e102c49e8da849794882f8c"
+
+[bootstrap.apt.sources.dev-tools-php]
+uris = "https://packages.sury.org/php/"
+components = "main"
+key = "https://packages.sury.org/php/apt.gpg"
+fingerprint = "15058500A0235D97F5D10063B188E2B695BD4743"
+
+[bootstrap.apt.sources.dev-tools-git]
+ppa = "git-core/ppa"
+fingerprint = "F911AB184317630C59970973E363C90F8F1B6217"
+
+[task_config]
+includes = ["tasks"]
+
+[tasks."dev-tools:check"]
+run = '"/usr/bin/python3" "{{ config_root }}/scripts/dev_tools.py" check'
+
+[tasks."dev-tools:github"]
+raw = true
+run = '"/usr/bin/python3" "{{ config_root }}/scripts/dev_tools.py" github'
+
+[tasks."dev-tools:php-prepare"]
+raw = true
+run = '"/usr/bin/python3" "{{ config_root }}/scripts/dev_tools.py" php-prepare'

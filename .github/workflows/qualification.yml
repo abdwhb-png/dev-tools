@@ -1,0 +1,77 @@
+name: Development tools qualification
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  isolated:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s tests -v
+      - run: bash -n bootstrap.sh scripts/qualify.sh
+  ubuntu:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ['24.04', '26.04']
+    container: ubuntu:${{ matrix.release }}
+    steps:
+      - name: Prepare disposable operator
+        run: |
+          apt-get update
+          apt-get install -y ca-certificates curl git python3 sudo zsh
+          useradd -m -s /bin/bash qualifier
+          echo 'qualifier ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/qualifier
+          chmod 440 /etc/sudoers.d/qualifier
+      - uses: actions/checkout@v4
+      - name: Copy source to writable isolated home
+        run: |
+          cp -a . /home/qualifier/source
+          chown -R qualifier:qualifier /home/qualifier/source
+      - name: Qualify actual installation
+        run: su - qualifier -c 'cd /home/qualifier/source && env GITHUB_ACTIONS=true CI=true bash scripts/qualify.sh ubuntu'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ubuntu-${{ matrix.release }}-evidence
+          path: /home/qualifier/source/evidence/
+  wsl2:
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ['24.04', '26.04']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare real WSL2 distribution
+        shell: pwsh
+        run: |
+          wsl --set-default-version 2
+          wsl --install --distribution Ubuntu-${{ matrix.release }} --web-download --no-launch
+          if ($LASTEXITCODE -ne 0) { throw 'WSL installation failed' }
+          wsl -d Ubuntu-${{ matrix.release }} -u root --exec bash -lc 'set -euo pipefail; uname -r | grep -i microsoft-standard-WSL2; apt-get update; apt-get install -y ca-certificates curl git python3 sudo zsh; useradd -m -s /bin/bash qualifier; echo "qualifier ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/qualifier; chmod 440 /etc/sudoers.d/qualifier'
+          if ($LASTEXITCODE -ne 0) { throw 'WSL operator preparation failed' }
+      - name: Qualify actual WSL installation
+        shell: pwsh
+        run: |
+          $source = (wsl -d Ubuntu-${{ matrix.release }} --exec wslpath -a "$env:GITHUB_WORKSPACE").Trim()
+          wsl -d Ubuntu-${{ matrix.release }} -u root --exec bash -lc "cp -a '$source' /home/qualifier/source; chown -R qualifier:qualifier /home/qualifier/source"
+          if ($LASTEXITCODE -ne 0) { throw 'WSL source copy failed' }
+          wsl -d Ubuntu-${{ matrix.release }} -u qualifier --exec bash -lc 'cd /home/qualifier/source && env GITHUB_ACTIONS=true CI=true bash scripts/qualify.sh wsl2'
+          if ($LASTEXITCODE -ne 0) { throw 'WSL qualification failed' }
+      - name: Collect evidence
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/wsl-evidence" | Out-Null
+          $destination = (wsl -d Ubuntu-${{ matrix.release }} --exec wslpath -a "$env:RUNNER_TEMP/wsl-evidence").Trim()
+          wsl -d Ubuntu-${{ matrix.release }} -u root --exec bash -lc "if test -d /home/qualifier/source/evidence; then cp -a /home/qualifier/source/evidence/. '$destination/'; fi"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wsl2-${{ matrix.release }}-evidence
+          path: ${{ runner.temp }}/wsl-evidence/
