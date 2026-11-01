@@ -1,6 +1,7 @@
 [bootstrap.packages]
 "apt:ca-certificates" = "latest"
 "apt:curl" = "latest"
+"apt:libatomic1" = "latest"
 "apt:git" = "1:2.56.0-0ppa1~ubuntu24.04.2"
 "apt:php8.5-bcmath" = "8.5.12-1+0~20261021.27+ubuntu24.04~1.gbp1a3e8a"
 "apt:php8.5-bz2" = "8.5.12-1+0~20261021.27+ubuntu24.04~1.gbp1a3e8a"
@@ -21,6 +22,7 @@
 "apt:php8.5-readline" = "8.5.12-1+0~20261021.27+ubuntu24.04~1.gbp1a3e8a"
 "apt:php8.5-redis" = "6.3.0-2+0~20260711.69+ubuntu24.04~1.gbpd148c3"
 "apt:php8.5-sqlite3" = "8.5.12-1+0~20261021.27+ubuntu24.04~1.gbp1a3e8a"
+"apt:php8.5-soap" = "8.5.12-1+0~20261021.27+ubuntu24.04~1.gbp1a3e8a"
 "apt:php8.5-xml" = "8.5.12-1+0~20261021.27+ubuntu24.04~1.gbp1a3e8a"
 "apt:php8.5-zip" = "8.5.12-1+0~20261021.27+ubuntu24.04~1.gbp1a3e8a"
 "apt:php8.5-zstd" = "0.15.2-3+0~20260622.16+ubuntu24.04~1.gbp9b7349"

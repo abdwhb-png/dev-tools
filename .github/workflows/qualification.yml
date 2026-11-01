@@ -2,17 +2,20 @@ name: Development tools qualification
 on:
   workflow_dispatch:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
 jobs:
   isolated:
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m unittest discover -s tests -v
       - run: bash -n bootstrap.sh scripts/qualify.sh
   ubuntu:
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -40,6 +43,7 @@ jobs:
           name: ubuntu-${{ matrix.release }}-evidence
           path: /home/qualifier/source/evidence/
   wsl2:
+    timeout-minutes: 30
     runs-on: windows-2025
     strategy:
       fail-fast: false

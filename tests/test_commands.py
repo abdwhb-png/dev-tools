@@ -15,6 +15,23 @@ spec.loader.exec_module(app)
 
 
 class Commands(unittest.TestCase):
+    def test_package_policy_is_scoped_and_survives_sudo(self):
+        commands = []
+        def external(argv, **kwargs):
+            commands.append(argv)
+            settings = dict(arg.split('=', 1) for arg in argv if '=' in arg)
+            self.assertIn('APT_CONFIG', settings, 'mise must receive an explicit per-invocation APT policy')
+            policy = Path(settings['APT_CONFIG'])
+            self.assertIn('APT::Install-Recommends "false"', policy.read_text())
+            self.assertEqual(argv[:2], ['sudo', 'env'])
+            self.assertNotIn('USER_SECRET', settings)
+            return subprocess.CompletedProcess(argv, 0)
+        with patch('subprocess.run', side_effect=external):
+            app.install_system_packages(Path('/verified/mise'), app.isolated_env('noble') | {'USER_SECRET': 'not-forwarded'})
+        self.assertEqual(len(commands), 1)
+        settings = dict(arg.split('=', 1) for arg in commands[0] if '=' in arg)
+        self.assertFalse(Path(settings['APT_CONFIG']).exists(), 'temporary policy must be removed')
+
     def invoke(self, args):
         output, error = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
