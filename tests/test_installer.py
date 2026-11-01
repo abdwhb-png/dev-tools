@@ -1,4 +1,5 @@
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import tempfile
@@ -124,3 +125,15 @@ sys.exit(subprocess.call(['/usr/bin/git', *args]))
         self.env['FAIL_GIT_STATUS'] = '1'
         self.assertNotEqual(self.invoke('--yes').returncode, 0)
         self.assertEqual(self.trace.read_text(), 'ran')
+
+    def test_noninteractive_install_requires_explicit_yes(self):
+        result = subprocess.run(['/bin/sh', str(self.installer)], env=self.env, stdin=subprocess.DEVNULL, start_new_session=True, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('interactive terminal', result.stderr)
+        self.assertFalse(self.destination.exists())
+
+    def test_interactive_cancellation_does_not_clone(self):
+        result = subprocess.run(['script', '-qec', 'sh ' + shlex.quote(str(self.installer)), '/dev/null'], input='n\n', env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Cancelled', result.stdout)
+        self.assertFalse(self.destination.exists())
