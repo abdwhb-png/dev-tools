@@ -36,7 +36,9 @@ jobs:
           cp -a . /home/qualifier/source
           chown -R qualifier:qualifier /home/qualifier/source
       - name: Qualify actual installation
-        run: su - qualifier -c 'cd /home/qualifier/source && env GITHUB_ACTIONS=true CI=true bash scripts/qualify.sh ubuntu'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sudo -H -u qualifier --preserve-env=GH_TOKEN,GITHUB_REPOSITORY env GITHUB_ACTIONS=true CI=true bash -c 'cd /home/qualifier/source && bash scripts/qualify.sh ubuntu'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -60,6 +62,9 @@ jobs:
           wsl -d Ubuntu-${{ matrix.release }} -u root --exec bash -lc 'set -euo pipefail; uname -r | grep -i microsoft-standard-WSL2; apt-get update; apt-get install -y ca-certificates curl git python3 sudo zsh; useradd -m -s /bin/bash qualifier; echo "qualifier ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/qualifier; chmod 440 /etc/sudoers.d/qualifier'
           if ($LASTEXITCODE -ne 0) { throw 'WSL operator preparation failed' }
       - name: Qualify actual WSL installation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WSLENV: GH_TOKEN:GITHUB_REPOSITORY
         shell: pwsh
         run: |
           $source = (wsl -d Ubuntu-${{ matrix.release }} --exec wslpath -a "$env:GITHUB_WORKSPACE").Trim()
