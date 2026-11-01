@@ -1,4 +1,6 @@
-# Local validation — 2026-11-01
+# Initial local validation — 2026-11-01
+
+This records the initial local-only stage before repository publication and CI execution. The statements about unrun installation gates describe that historical stage. See [completed CI qualification](ci-qualification.md) for the subsequent real-install results and current limits.
 
 ## Scope
 
@@ -19,7 +21,7 @@ A mise 2026.10.25 executable was downloaded to a temporary directory and verifie
 - The actual public `bootstrap.sh --dry-run` completed without installing anything.
 - The real-install qualification script refused ordinary workstation execution before performing installation work.
 
-## Not established
+## Not established at the initial local stage
 
 The GitHub Actions workflow has not run. Real APT installation, full PHP extension equivalence and functionality, additional PHP preparation, all tool downloads/installations, default/project runtime switching, repeat installation, and real WSL2 behavior remain CI qualification gates. GitHub login and credential storage remain per-machine manual qualification. Passing local fixtures is not a successful Ubuntu/WSL installation result.
 
