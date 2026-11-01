@@ -199,16 +199,21 @@ class Commands(unittest.TestCase):
                 (project / name).write_bytes((ROOT / name).read_bytes())
             prefix = root / 'php'
             (prefix / 'bin').mkdir(parents=True)
+            actual = root / 'php-binary'
+            actual.write_text('#!/bin/sh\nprintf "8.5.12"\n')
+            actual.chmod(0o755)
             php = prefix / 'bin/php'
-            php.write_text('#!/bin/sh\necho "fixture PHP 8.5.12"\n')
-            php.chmod(0o755)
             env = app.isolated_env() | {'HOME': str(root), 'XDG_CONFIG_HOME': str(root / 'config'), 'XDG_DATA_HOME': str(root / 'data'), 'XDG_CACHE_HOME': str(root / 'cache'), 'MISE_CEILING_PATHS': str(root), 'MISE_TRUSTED_CONFIG_PATHS': str(project)}
             mise = os.environ['DEV_TOOLS_MISE']
-            linked = subprocess.run([mise, 'link', 'php@8.5.12', str(prefix)], cwd=project, env=env, capture_output=True, text=True)
-            self.assertEqual(linked.returncode, 0, linked.stderr)
+            original_lock = (project / 'mise.lock').read_bytes()
+            def system_path(value):
+                return actual if value == '/usr/bin/php8.5' else Path(value)
+            with patch.object(app, 'ROOT', project), patch.object(app, 'php_prefix', return_value=prefix), patch.object(app, 'Path', side_effect=system_path):
+                app.link_php(mise, '8.5.12', env)
+            self.assertEqual((project / 'mise.lock').read_bytes(), original_lock, 'PHP registration must preserve the reviewed lockfile')
             selected = subprocess.run([mise, 'which', 'php'], cwd=project, env=env, capture_output=True, text=True)
             self.assertEqual(selected.returncode, 0, selected.stderr)
-            self.assertEqual(Path(selected.stdout.strip()).resolve(), php)
+            self.assertEqual(Path(selected.stdout.strip()).resolve(), actual)
             result = subprocess.run([mise, 'install', '--locked', '--dry-run', 'node'], cwd=project, env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertNotIn('php@8.5.12', result.stderr)

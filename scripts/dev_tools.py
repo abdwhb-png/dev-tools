@@ -142,7 +142,8 @@ def link_php(mise, version, env):
         raise RuntimeError(f'PHP executable collision: {target}')
     else:
         target.symlink_to(executable)
-    run([mise, 'link', f'php@{version}', prefix], env=env, cwd=ROOT)
+    # Linking a system runtime must not regenerate the reviewed download lockfile.
+    run([mise, 'link', f'php@{version}', prefix], env=env | {'MISE_LOCKFILE': '0'}, cwd=ROOT)
 
 
 def install_shells(mise, env):
