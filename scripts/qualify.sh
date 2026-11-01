@@ -40,7 +40,12 @@ mise exec -- composer --no-plugins --no-scripts validate --strict --no-check-pub
 mise run dev-tools:github
 git config --get-all credential.https://github.com.helper > evidence/github-helper.txt
 python3 scripts/dev_tools.py check
-GIT_TERMINAL_PROMPT=0 mise exec -- git clone --quiet --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$fixture/authenticated-clone"
+[[ $(mise exec -- gh api "repos/${GITHUB_REPOSITORY}" --jq '.private') == true ]] || { echo 'Authenticated clone qualification requires this private repository.' >&2; exit 1; }
+if GIT_TERMINAL_PROMPT=0 mise -C "$fixture" exec -- git -c credential.helper= -c http.https://github.com/.extraheader= clone --quiet --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$fixture/unauthenticated-clone" 2> evidence/unauthenticated-clone.txt; then
+  echo 'Private repository was readable without the credential helper; authentication test is invalid.' >&2
+  exit 1
+fi
+GIT_TERMINAL_PROMPT=0 mise -C "$fixture" exec -- git clone --quiet --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$fixture/authenticated-clone"
 [[ -f "$fixture/authenticated-clone/README.md" ]]
 printf '[tools]\nnode = "24.18.0"\n' > "$fixture/mise.toml"
 mise trust "$fixture/mise.toml"
