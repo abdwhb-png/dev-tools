@@ -249,7 +249,7 @@ def tool_versions():
 def check(args):
     mise = mise_path()
     if not mise.is_file():
-        raise RuntimeError('Managed mise is absent; run bootstrap.sh first.')
+        raise RuntimeError('Managed mise is absent; run dev-tools bootstrap first.')
     env = isolated_env()
     failures = []
     for command, expected in tool_versions().items():
@@ -271,13 +271,13 @@ def check(args):
     run([mise, 'which', 'php'], cwd=ROOT, env=env)
     run([mise, 'which', 'composer'], cwd=ROOT, env=env)
     if not args.tools_only:
-        status = subprocess.run([str(mise), 'exec', '--', 'gh', 'auth', 'status'], cwd=ROOT, env=env, capture_output=True)
+        status = subprocess.run([str(mise), 'exec', '--', 'gh', 'auth', 'status', '--hostname', 'github.com', '--active'], cwd=ROOT, env=env, capture_output=True)
         if status.returncode:
-            failures.append('GitHub authentication: run mise run dev-tools:github')
+            failures.append('GitHub authentication: run dev-tools github')
         else:
             helper = subprocess.run(['git', 'config', '--get', 'credential.https://github.com.helper'], capture_output=True, text=True)
             if helper.returncode or 'gh auth git-credential' not in helper.stdout:
-                failures.append('GitHub HTTPS credential helper: run mise run dev-tools:github')
+                failures.append('GitHub HTTPS credential helper: run dev-tools github')
     if failures:
         raise RuntimeError('Not ready: ' + '; '.join(failures))
     print('Tools verified.' if args.tools_only else 'Tools and GitHub verified.')
@@ -288,7 +288,7 @@ def github(args):
     mise = mise_path()
     env = isolated_env()
     prefix = [mise, 'exec', '--', 'gh']
-    status = subprocess.run([str(p) for p in prefix + ['auth', 'status']], cwd=ROOT, env=env, capture_output=True)
+    status = subprocess.run([str(p) for p in prefix + ['auth', 'status', '--hostname', 'github.com', '--active']], cwd=ROOT, env=env, capture_output=True)
     if status.returncode:
         if not sys.stdin.isatty():
             raise RuntimeError('GitHub login requires an interactive terminal; tools remain installed.')
@@ -299,6 +299,7 @@ def github(args):
     helper = subprocess.run(['git', 'config', '--get', 'credential.https://github.com.helper'], capture_output=True, text=True)
     if helper.returncode or 'gh auth git-credential' not in helper.stdout:
         run(prefix + ['auth', 'setup-git', '--hostname', 'github.com'], cwd=ROOT, env=env)
+    print('GitHub HTTPS access configured.')
     return 0
 
 
@@ -316,7 +317,7 @@ def login_github(prefix, env):
             else:
                 print(line.rstrip(), flush=True)
         if process.wait():
-            raise RuntimeError('GitHub login failed or expired; rerun dev-tools:github.')
+            raise RuntimeError('GitHub login failed or expired; rerun dev-tools github.')
     finally:
         if process.poll() is None:
             process.terminate()
@@ -334,7 +335,8 @@ def install_browser_link(mise, env):
     if target.is_symlink() and target.resolve() == source.resolve():
         return
     if target.exists() or target.is_symlink():
-        installs = Path(os.environ.get('MISE_DATA_DIR', home() / '.local/share/mise')) / 'installs/http-chrome'
+        data = Path(env.get('XDG_DATA_HOME', home() / '.local/share'))
+        installs = Path(env.get('MISE_DATA_DIR', data / 'mise')) / 'installs/http-chrome'
         if not target.is_symlink() or not target.resolve().is_relative_to(installs.resolve()):
             raise RuntimeError(f'Browser launcher collision: {target}')
         target.unlink()
@@ -350,7 +352,7 @@ def herdr_config(args):
             print('Herdr preferences already conform.')
             return 0
         if not args.apply:
-            print('Personal Herdr preferences preserved. To review/apply the profile: mise run dev-tools:herdr-config -- --apply')
+            print('Personal Herdr preferences preserved. To review/apply the profile: dev-tools herdr-config --apply')
             return 0
         print(''.join(difflib.unified_diff(target.read_text().splitlines(True), source.read_text().splitlines(True), fromfile='current', tofile='profile')))
         if not sys.stdin.isatty() or input('Back up and replace Herdr preferences? [y/N] ').lower() not in ('y', 'yes'):
@@ -378,7 +380,8 @@ def upgrade(args):
     if release.get('draft') or release.get('prerelease') or not re.fullmatch(r'v\d+\.\d+\.\d+', version) or not re.fullmatch(r'[0-9a-f]{40}', revision):
         raise RuntimeError('Latest release metadata does not identify a stable pinned source.')
     if current == revision:
-        print(f'Already up to date: {version}.')
+        print(f'Source already up to date: {version}.')
+        print('Tools were not checked. Run dev-tools check to verify them, or dev-tools bootstrap to repair this installation.')
         return 0
     print(f'Upgrade to {version} ({revision}).')
     if args.dry_run:
@@ -449,8 +452,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         return {'bootstrap': bootstrap, 'check': check, 'github': github, 'upgrade': upgrade, 'herdr-config': herdr_config, 'php-prepare': prepare_php}[args.command](args)
+    except KeyboardInterrupt:
+        print('Cancelled. Any completed changes are retained.', file=sys.stderr)
+        return 130
     except (RuntimeError, OSError, ValueError, subprocess.CalledProcessError) as error:
-        print(f'{args.command} failed: {error}. Completed APT changes and tool downloads are retained; correct the error and rerun.', file=sys.stderr)
+        print(f'{args.command} failed: {error}', file=sys.stderr)
         return 1
 
 

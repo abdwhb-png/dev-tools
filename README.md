@@ -29,6 +29,8 @@ dev-tools upgrade
 
 The command is installed in `~/.local/bin` and works across Bash, Zsh, SSH and ordinary process execution. It checks the latest stable release, skips installer downloads when already current, verifies a downloaded installer's SHA-256 against GitHub release metadata, and delegates to the same installer with `--upgrade`. Temporary files are removed automatically. `dev-tools upgrade --yes` is unattended; `--dry-run` reads release metadata but downloads no installer and changes nothing.
 
+The installer distinguishes a new installation from checking/repairing an existing checkout or updating it. Its confirmation mentions prerequisites only when some are missing. Those prerequisites are distinct from the developer tools and system libraries, which bootstrap checks separately. An already current source release does not imply healthy tools: use `dev-tools check` to verify them, or `dev-tools bootstrap` to repair the installed configuration without keeping or downloading `install.sh`.
+
 For an existing v0.2.0 installation that does not yet have this command, bootstrap it once after the new release is published:
 
 ```sh
@@ -48,7 +50,7 @@ dev-tools github
 dev-tools check
 ```
 
-GitHub setup uses the native device/browser login flow, selects HTTPS, and configures Git's credential helper. Login is per machine. gh owns credential storage; on machines without a credential store, its documented fallback is a local plaintext file. No credentials belong in this repository. Cancelling login leaves tools installed.
+GitHub setup uses the native device/browser login flow, selects HTTPS, and configures Git's credential helper. A valid active account on github.com is reused; expired inactive accounts and other GitHub hosts do not trigger a new login. Login is per machine. gh owns credential storage; on machines without a credential store, its documented fallback is a local plaintext file. No credentials belong in this repository. Cancelling login leaves tools installed.
 
 ## Tools and versions
 
@@ -69,7 +71,7 @@ Use native mise project declarations. The global fragment enables native version
 Additional PHP versions require binary packages first:
 
 ```sh
-mise run dev-tools:php-prepare -- 8.4.27
+dev-tools php-prepare 8.4.27
 ```
 
 The task resolves the exact PHP release from the configured Sury binary repository, displays its package pins, asks before installing, and registers it with `mise link`. It never compiles PHP. If the repository no longer offers the requested release, it fails rather than selecting another release. Package indexes may need refreshing with `sudo apt-get update`.
@@ -107,11 +109,11 @@ The workflow requires complete installation evidence for identical runtime files
 
 Publication only runs isolated tests and syntax checks, renders the versioned wrapper and compares its public downloads. It never launches an installation matrix as a fallback. Missing or expired complete evidence blocks publication. Release notes link the reused run; immutability remains enabled, and only the publishing job has contents write permission. Existing drafts are not overwritten automatically. Merging and publishing remain separate actions.
 
-## Agentic tools (next release)
+## Agentic tools
 
-The next release adds agent-browser 0.41.1, Chrome for Testing 156.0.8078.80 and Herdr 0.9.5 as locked native downloads. Zsh and browser system libraries come from Ubuntu. No agent CLI, API credentials, browser profile, SSH configuration or running session is copied.
+The configuration includes agent-browser 0.41.1, Chrome for Testing 156.0.8078.80 and Herdr 0.9.5 as locked native downloads. Zsh and browser system libraries come from Ubuntu. No agent CLI, API credentials, browser profile, SSH configuration or running session is copied.
 
-The reviewed Herdr profile in `config/herdr.toml` reproduces the local terminal theme, Ctrl+B bindings, UI preferences and Zsh login shell. It is copied to a regular file, preserving existing personal preferences. To explicitly review, back up and replace them, use `mise run dev-tools:herdr-config -- --apply`. Rerunning with identical contents does not create another backup or rewrite the file. Existing Herdr servers are never restarted by bootstrap.
+The reviewed Herdr profile in `config/herdr.toml` reproduces the local terminal theme, Ctrl+B bindings, UI preferences and Zsh login shell. It is copied to a regular file, preserving existing personal preferences. To explicitly review, back up and replace them, use `dev-tools herdr-config --apply`. Rerunning with identical contents does not create another backup or rewrite the file. Existing Herdr servers are never restarted by bootstrap.
 
 Use `dev-tools upgrade` to move a clean managed checkout to the latest stable release; older installations use the one-time pipe command above. It still refuses foreign origins, modified checkouts and unrequested version changes. A same-version upgrade does not fetch Git again; matching APT packages skip sudo/APT, locked tool installs reuse existing installations, and identical Herdr preferences are left alone. No system rollback is promised after a partial failure; rerun the same installer to repair it. The streamed installer preview remains offline; the global upgrade preview only reads release metadata.
 
