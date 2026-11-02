@@ -10,20 +10,32 @@ Use a regular Ubuntu account with sudo access. The bootstrap uses Ubuntu's `/usr
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y ca-certificates curl git python3
+sudo apt-get install -y ca-certificates curl
 ```
 
-The [v0.1.0 installer](https://github.com/abdwhb-png/dev-tools/releases/tag/v0.1.0) is published:
+Install directly from your terminal without keeping a script file:
 
 ```sh
-curl -fsSL https://github.com/abdwhb-png/dev-tools/releases/latest/download/install.sh -o install.sh
-sh install.sh --dry-run
-sh install.sh
+curl -fsSL https://github.com/abdwhb-png/dev-tools/releases/latest/download/install.sh | sh
 ```
 
-It supports `curl ... | sh` as well; confirmations read from the terminal. Without a terminal, pass `--yes` explicitly. It installs missing Git, system Python and certificates via sudo after confirmation, retrieves the release's exact Git SHA, and keeps its checkout at `${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/source`. Existing modified checkouts or other releases are never overwritten. Rerunning the same release repairs/repeats installation; upgrading between releases is not implemented.
+The installer reads confirmations from your terminal even when its input is a pipe. For unattended use, append `-s -- --yes` after `sh`. It installs missing Ubuntu prerequisites, then applies the release's exact checkout. Keep that checkout at its installed location.
 
-Alternatively, clone a reviewed revision of this public repository and run `sh bootstrap.sh --dry-run`, then `sh bootstrap.sh` from that checkout. This route requires the prerequisites above. The bootstrap also remains callable with Bash.
+After installing a release that includes the global command, future updates are simply:
+
+```sh
+dev-tools upgrade
+```
+
+The command is installed in `~/.local/bin` and works across Bash, Zsh, SSH and ordinary process execution. It checks the latest stable release, skips installer downloads when already current, verifies a downloaded installer's SHA-256 against GitHub release metadata, and delegates to the same installer with `--upgrade`. Temporary files are removed automatically. `dev-tools upgrade --yes` is unattended; `--dry-run` reads release metadata but downloads no installer and changes nothing.
+
+For an existing v0.2.0 installation that does not yet have this command, bootstrap it once after the new release is published:
+
+```sh
+curl -fsSL https://github.com/abdwhb-png/dev-tools/releases/latest/download/install.sh | sh -s -- --upgrade
+```
+
+You can also use a reviewed checkout directly with `sh bootstrap.sh`. Git, system Python and certificates are needed for this route. The global updater requires a checkout managed by the release installer and refuses unrelated locations.
 
 The preview performs no network requests and writes no files. It describes intended packages and configuration, not a complete APT dependency simulation. `--yes` explicitly accepts the same changes without a prompt. Keep the checkout at its installed location: the global fragment links to it as the authoritative source. Moving it requires explicitly updating that link.
 
@@ -32,8 +44,8 @@ The bootstrap downloads the pinned mise executable, verifies its SHA-256, instal
 After opening a new terminal:
 
 ```sh
-mise run dev-tools:github
-mise run dev-tools:check
+dev-tools github
+dev-tools check
 ```
 
 GitHub setup uses the native device/browser login flow, selects HTTPS, and configures Git's credential helper. Login is per machine. gh owns credential storage; on machines without a credential store, its documented fallback is a local plaintext file. No credentials belong in this repository. Cancelling login leaves tools installed.
@@ -101,7 +113,7 @@ The next release adds agent-browser 0.41.1, Chrome for Testing 156.0.8078.80 and
 
 The reviewed Herdr profile in `config/herdr.toml` reproduces the local terminal theme, Ctrl+B bindings, UI preferences and Zsh login shell. It is copied to a regular file, preserving existing personal preferences. To explicitly review, back up and replace them, use `mise run dev-tools:herdr-config -- --apply`. Rerunning with identical contents does not create another backup or rewrite the file. Existing Herdr servers are never restarted by bootstrap.
 
-Download the new release installer and use `sh install.sh --upgrade` to move an existing clean managed checkout to its pinned revision. It still refuses foreign origins, modified checkouts and unrequested version changes. A same-version upgrade does not fetch Git again; matching APT packages skip sudo/APT, locked tool installs reuse existing installations, and identical Herdr preferences are left alone. No system rollback is promised after a partial failure; rerun the same installer to repair it. Preview remains offline.
+Use `dev-tools upgrade` to move a clean managed checkout to the latest stable release; older installations use the one-time pipe command above. It still refuses foreign origins, modified checkouts and unrequested version changes. A same-version upgrade does not fetch Git again; matching APT packages skip sudo/APT, locked tool installs reuse existing installations, and identical Herdr preferences are left alone. No system rollback is promised after a partial failure; rerun the same installer to repair it. The streamed installer preview remains offline; the global upgrade preview only reads release metadata.
 
 GitHub login now presents the native gh device code in a separate text frame with its URL. Authorization happens on your own computer, without trying to open a browser on the VPS. gh still owns OAuth and credential storage. Already valid authentication is reused.
 

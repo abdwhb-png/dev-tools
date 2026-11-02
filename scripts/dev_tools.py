@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 """Prepare developer tools using mise's configuration and Ubuntu's package manager."""
 
 import argparse
@@ -171,14 +172,16 @@ def install_shells(mise, env):
         run([mise, 'bootstrap', '--only', 'dotfiles,mise-shell-activate', '--yes'], cwd=path, env=shell_env)
 
 
-def publish_launcher(mise):
-    target = home() / '.local/bin/mise'
-    if target.is_symlink() and target.resolve() == mise:
-        return
-    if target.exists() or target.is_symlink():
-        raise RuntimeError(f'Launcher collision: {target}; keep it or move it explicitly before retrying.')
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.symlink_to(mise)
+def publish_launchers(mise, *, dry_run=False):
+    for name, source in (('mise', mise), ('dev-tools', ROOT / 'scripts/dev_tools.py')):
+        target = home() / '.local/bin' / name
+        if target.is_symlink() and target.resolve() == source.resolve():
+            continue
+        if target.exists() or target.is_symlink():
+            raise RuntimeError(f'Launcher collision: {target}; keep it or move it explicitly before retrying.')
+        if not dry_run:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to(source)
 
 
 def install_system_packages(mise, env):
@@ -209,9 +212,7 @@ def bootstrap(args):
         return 0
     if os.geteuid() == 0:
         raise RuntimeError('Run as a regular user with sudo privileges, not root.')
-    launcher = home() / '.local/bin/mise'
-    if (launcher.exists() or launcher.is_symlink()) and not (launcher.is_symlink() and launcher.resolve() == mise_path()):
-        raise RuntimeError(f'Launcher collision: {launcher}')
+    publish_launchers(mise_path(), dry_run=True)
     if not args.yes and (not sys.stdin.isatty() or input('Apply these changes? [y/N] ').lower() not in ('y', 'yes')):
         print('Cancelled; no changes applied.')
         return 1
@@ -226,12 +227,12 @@ def bootstrap(args):
     target.parent.mkdir(parents=True, exist_ok=True)
     if not target.is_symlink():
         target.symlink_to(ROOT, target_is_directory=True)
-    publish_launcher(mise)
+    publish_launchers(mise)
     install_shells(mise, env)
     install_browser_link(mise, env)
     herdr_config(argparse.Namespace(apply=False))
     check(argparse.Namespace(tools_only=True))
-    print('Tools ready. Open a new terminal, then run: mise run dev-tools:github')
+    print('Tools ready. Open a new terminal, then run: dev-tools github; dev-tools check. Future updates: dev-tools upgrade.')
     return 0
 
 
@@ -365,6 +366,43 @@ def herdr_config(args):
     return 0
 
 
+def upgrade(args):
+    managed = Path(os.environ.get('XDG_DATA_HOME', home() / '.local/share')) / 'dev-tools/source'
+    if ROOT.resolve() != managed.resolve():
+        raise RuntimeError('Upgrade requires the checkout managed by the release installer.')
+    current = subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip()
+    with urllib.request.urlopen('https://api.github.com/repos/abdwhb-png/dev-tools/releases/latest', timeout=30) as response:
+        release = json.load(response)
+    version = release.get('tag_name', '')
+    revision = release.get('target_commitish', '')
+    if release.get('draft') or release.get('prerelease') or not re.fullmatch(r'v\d+\.\d+\.\d+', version) or not re.fullmatch(r'[0-9a-f]{40}', revision):
+        raise RuntimeError('Latest release metadata does not identify a stable pinned source.')
+    if current == revision:
+        print(f'Already up to date: {version}.')
+        return 0
+    print(f'Upgrade to {version} ({revision}).')
+    if args.dry_run:
+        print('Preview only; no installer downloaded or changes applied.')
+        return 0
+    url = f'https://github.com/abdwhb-png/dev-tools/releases/download/{version}/install.sh'
+    asset = next((item for item in release.get('assets', []) if item.get('name') == 'install.sh'), {})
+    digest = asset.get('digest', '')
+    if asset.get('browser_download_url') != url or not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
+        raise RuntimeError('Published installer URL or SHA-256 is missing or invalid.')
+    with tempfile.TemporaryDirectory(prefix='dev-tools-upgrade-') as directory:
+        with urllib.request.urlopen(url, timeout=60) as response:
+            content = response.read()
+        if 'sha256:' + hashlib.sha256(content).hexdigest() != digest:
+            raise RuntimeError('Published installer checksum mismatch; nothing executed.')
+        installer = Path(directory) / 'install.sh'
+        installer.write_bytes(content)
+        command = ['sh', str(installer), '--upgrade']
+        if args.yes:
+            command.append('--yes')
+        run(command)
+    return 0
+
+
 def prepare_php(args):
     host()
     if not re.fullmatch(r'8\.[2-9]\.\d+', args.version):
@@ -401,13 +439,16 @@ def main(argv=None):
     verify = commands.add_parser('check')
     verify.add_argument('--tools-only', action='store_true')
     commands.add_parser('github')
+    update = commands.add_parser('upgrade')
+    update.add_argument('--yes', action='store_true')
+    update.add_argument('--dry-run', action='store_true')
     profile = commands.add_parser('herdr-config')
     profile.add_argument('--apply', action='store_true')
     php = commands.add_parser('php-prepare')
     php.add_argument('version')
     args = parser.parse_args(argv)
     try:
-        return {'bootstrap': bootstrap, 'check': check, 'github': github, 'herdr-config': herdr_config, 'php-prepare': prepare_php}[args.command](args)
+        return {'bootstrap': bootstrap, 'check': check, 'github': github, 'upgrade': upgrade, 'herdr-config': herdr_config, 'php-prepare': prepare_php}[args.command](args)
     except (RuntimeError, OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f'{args.command} failed: {error}. Completed APT changes and tool downloads are retained; correct the error and rerun.', file=sys.stderr)
         return 1
