@@ -20,7 +20,7 @@ export PATH="$HOME/.local/bin:$PATH"
 export DEV_TOOLS_MISE="$HOME/.local/bin/mise"
 python3 -m unittest discover -s "${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/source/tests" -v
 dev-tools check --tools-only
-SFW_SKIP_UPDATE_CHECK=1 sfw --version > evidence/sfw-version.txt
+SFW_SKIP_UPDATE_CHECK=1 mise exec -- sfw --version > evidence/sfw-version.txt
 SFW_SKIP_UPDATE_CHECK=1 mise exec -- sfw npm --version > evidence/sfw-npm-version.txt
 python3 - <<'STATE' > evidence/before-replay.json
 import json,os
@@ -50,8 +50,8 @@ export DEV_TOOLS_NODE_VERSION
 export DEV_TOOLS_PHP_VERSION
 DEV_TOOLS_NODE_VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("mise.toml", "rb"))["tools"]["node"])')
 DEV_TOOLS_PHP_VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("mise.toml", "rb"))["tools"]["php"])')
-bash -lic 'set -e; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
-zsh -lic 'set -e; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
+bash -lic 'set -e; SFW_SKIP_UPDATE_CHECK=1 sfw --version; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
+zsh -lic 'set -e; SFW_SKIP_UPDATE_CHECK=1 sfw --version; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
 # A project must override the default and leaving it must restore the default.
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
