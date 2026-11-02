@@ -13,37 +13,54 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-24.04
+    outputs:
+      qualification_url: ${{ steps.evidence.outputs.run_url }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - name: Validate publication target
         env:
           VERSION: ${{ inputs.version }}
         run: |
           test "$GITHUB_REF" = refs/heads/main
           [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-  qualify:
-    needs: validate
-    uses: ./.github/workflows/qualification.yml
-    with:
-      version: ${{ inputs.version }}
+      - name: Reuse complete qualification for identical files
+        id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/qualification.py --repository "$GITHUB_REPOSITORY" --revision "$GITHUB_SHA"
   publish:
-    needs: qualify
+    needs: validate
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
         with:
-          name: installer-candidate
+          persist-credentials: false
+      - name: Build and check the release wrapper
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 scripts/build_installer.py --revision "$GITHUB_SHA" --version "$VERSION" --output .ci-installer
+          sh -n .ci-installer
       - name: Publish the tested bytes
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
+          QUALIFICATION_URL: ${{ needs.validate.outputs.qualification_url }}
         run: |
           set -euo pipefail
           mv .ci-installer install.sh
           sha256sum install.sh > SHA256SUMS
-          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "$VERSION" --notes "Qualified Ubuntu/WSL2 installer. Source: $GITHUB_SHA. CI: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "$VERSION" --notes "Qualified Ubuntu/WSL2 installer. Source: $GITHUB_SHA. Qualification: $QUALIFICATION_URL. Publication: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           gh release upload "$VERSION" install.sh SHA256SUMS --repo "$GITHUB_REPOSITORY"
           gh release edit "$VERSION" --draft=false --latest --repo "$GITHUB_REPOSITORY"
           for release in "$VERSION" latest; do

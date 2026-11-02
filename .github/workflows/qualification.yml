@@ -1,16 +1,11 @@
 name: Development tools qualification
 on:
-  workflow_call:
-    inputs:
-      version:
-        type: string
-        default: v0.0.0-ci
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths-ignore: ['**/*.md']
   pull_request:
     paths-ignore: ['**/*.md']
+concurrency:
+  group: qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -29,12 +24,22 @@ jobs:
           path: .ci-installer
           include-hidden-files: true
   isolated:
+    needs: build
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Verify CI token can read qualification artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name installer-candidate --dir "$RUNNER_TEMP/evidence-token-check"
+          sh -n "$RUNNER_TEMP/evidence-token-check/.ci-installer"
       - run: python3 -m unittest discover -s tests -v
       - run: sh -n bootstrap.sh scripts/install.sh.in
       - run: bash -n scripts/qualify.sh
