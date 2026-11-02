@@ -12,12 +12,34 @@ if [[ ${1:?platform required} == wsl2 ]]; then
   uname -r | grep -i microsoft-standard-WSL2
 fi
 sh .ci-installer --dry-run
-sh .ci-installer --yes
+curl -fsSL https://github.com/abdwhb-png/dev-tools/releases/download/v0.1.0/install.sh -o evidence/v0.1.0-install.sh
+printf '90f2ac14eafadb20760df7cecafa80df9645195dcae832af7d68c2df2ec7e87b  evidence/v0.1.0-install.sh\n' | sha256sum -c -
+sh evidence/v0.1.0-install.sh --yes
+sh .ci-installer --yes --upgrade
 export PATH="$HOME/.local/bin:$PATH"
 export DEV_TOOLS_MISE="$HOME/.local/bin/mise"
 python3 -m unittest discover -s "${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/source/tests" -v
 python3 scripts/dev_tools.py check --tools-only
-cat .ci-installer | sh -s -- --yes
+python3 - <<'STATE' > evidence/before-replay.json
+import json,os
+from pathlib import Path
+home=Path.home()
+paths=[home/p for p in ('.profile','.bashrc','.zshrc','.zshenv','.zprofile','.config/herdr/config.toml','.local/bin/mise','.config/mise/conf.d/dev-tools','.local/share/dev-tools/browser/chrome')]
+print(json.dumps({str(p):[p.lstat().st_mtime_ns,p.readlink().as_posix() if p.is_symlink() else p.read_text()] for p in paths if p.exists()},sort_keys=True))
+STATE
+cat .ci-installer | sh -s -- --yes --upgrade | tee evidence/replay.log
+python3 - <<'STATE'
+import json,re
+from pathlib import Path
+before=json.loads(Path('evidence/before-replay.json').read_text())
+for name, expected in before.items():
+    p=Path(name)
+    actual=[p.lstat().st_mtime_ns,p.readlink().as_posix() if p.is_symlink() else p.read_text()]
+    assert actual==expected, 'Replay changed '+name
+text=Path('evidence/replay.log').read_text()
+assert not re.search(r'\bDownloading\b|bootstrap packages apply|apt-get',text,re.I), 'Replay repeated an installation operation'
+print('Replay configuration, links and installation operations verified.')
+STATE
 # Every real command is evaluated through the installed environment.
 mise exec -- php -r 'if ((new PDO("sqlite::memory:"))->query("select 1")->fetchColumn() != 1) exit(1); $i = new Imagick(); $i->newImage(1, 1, "white"); if (!class_exists("Redis") || !class_exists("MongoDB\\Driver\\Manager")) exit(1);'
 mise exec -- python3 -c 'import ssl, sqlite3; print(ssl.OPENSSL_VERSION)'
@@ -73,3 +95,30 @@ mise which php > evidence/php-path.txt
 mise which composer > evidence/composer-path.txt
 dpkg-query -W 'php*' git > evidence/packages.txt
 python3 scripts/dev_tools.py check --tools-only
+
+# Agentic runtime: only local fixture content and owned sessions, no agent/provider calls.
+printf '<html><body><button>Fixture button</button></body></html>' > "$fixture/browser.html"
+cleanup_agentic() {
+  mise exec -- agent-browser --session dev-tools-ci close || true
+  mise exec -- agent-browser dashboard stop || true
+  mise exec -- herdr --session dev-tools-ci server stop || true
+  rm -rf "$fixture"
+}
+trap cleanup_agentic EXIT
+mise exec -- agent-browser --session dev-tools-ci open "file://$fixture/browser.html"
+mise exec -- agent-browser --session dev-tools-ci snapshot -i | grep 'Fixture button'
+mise exec -- agent-browser --session dev-tools-ci screenshot "$root/evidence/browser.png"
+mise exec -- agent-browser dashboard start
+curl -fsS http://127.0.0.1:4848/ > evidence/dashboard.html
+mise exec -- herdr --session dev-tools-ci server > evidence/herdr.log 2>&1 &
+for attempt in $(seq 1 30); do
+  if mise exec -- herdr --session dev-tools-ci status server > evidence/herdr-status.txt; then break; fi
+  sleep 1
+done
+mise exec -- herdr --session dev-tools-ci status server
+cleanup_agentic
+trap 'rm -rf "$fixture"' EXIT
+# Fresh user configuration, sharing only immutable download caches.
+fresh_home=$(mktemp -d)
+env HOME="$fresh_home" XDG_CONFIG_HOME="$fresh_home/.config" XDG_DATA_HOME="$fresh_home/.local/share" XDG_CACHE_HOME="$HOME/.cache" sh .ci-installer --yes
+rm -rf "$fresh_home"

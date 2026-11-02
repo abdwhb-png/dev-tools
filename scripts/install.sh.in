@@ -7,11 +7,13 @@ main() {
     destination="${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/source"
     yes=0
     preview=0
+    upgrade=0
     for option in "$@"; do
         case "$option" in
             --yes) yes=1 ;;
+            --upgrade) upgrade=1 ;;
             --dry-run) preview=1 ;;
-            --help) echo 'Usage: sh install.sh [--dry-run] [--yes]'; return 0 ;;
+            --help) echo 'Usage: sh install.sh [--dry-run] [--yes] [--upgrade]'; return 0 ;;
             *) echo "Unknown option: $option" >&2; return 1 ;;
         esac
     done
@@ -46,11 +48,17 @@ main() {
         test -d "$destination/.git" && test ! -L "$destination" || { echo "Destination collision: $destination" >&2; return 1; }
         checkout_status=$(git -C "$destination" status --porcelain)
         test "$(git -C "$destination" remote get-url origin)" = 'https://github.com/abdwhb-png/dev-tools.git' &&
-        test "$(git -C "$destination" rev-parse HEAD)" = "$revision" &&
         test -z "$checkout_status" || {
             echo 'Existing checkout differs or is modified; no automatic release upgrade or overwrite.' >&2
             return 1
         }
+        if test "$(git -C "$destination" rev-parse HEAD)" != "$revision"; then
+            test "$upgrade" = 1 || { echo 'A different release is installed; rerun with --upgrade.' >&2; return 1; }
+            printf 'Upgrading source to %s (%s)\n' "$version" "$revision"
+            git -C "$destination" fetch --depth=1 origin "$revision"
+            git -C "$destination" checkout --detach FETCH_HEAD
+            test "$(git -C "$destination" rev-parse HEAD)" = "$revision" || return 1
+        fi
     else
         mkdir -p "$(dirname "$destination")"
         staging=$(mktemp -d "$(dirname "$destination")/.source.XXXXXX")
