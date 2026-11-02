@@ -1,11 +1,6 @@
 name: Publish qualified installer
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Stable release tag, e.g. v0.1.0'
-        required: true
-        type: string
 permissions:
   contents: read
 concurrency:
@@ -18,6 +13,8 @@ jobs:
       actions: read
     runs-on: ubuntu-24.04
     outputs:
+      version: ${{ steps.version.outputs.version }}
+      needed: ${{ steps.version.outputs.needed }}
       qualification_url: ${{ steps.evidence.outputs.run_url }}
     steps:
       - uses: actions/checkout@v4
@@ -25,18 +22,21 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Validate publication target
+        run: test "$GITHUB_REF" = refs/heads/main
+      - name: Calculate the release number
+        id: version
         env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          test "$GITHUB_REF" = refs/heads/main
-          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release_version.py --repository "$GITHUB_REPOSITORY" --revision "$GITHUB_SHA"
       - name: Reuse complete qualification for identical files
+        if: steps.version.outputs.needed == 'true'
         id: evidence
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/qualification.py --repository "$GITHUB_REPOSITORY" --revision "$GITHUB_SHA"
   publish:
     needs: validate
+    if: needs.validate.outputs.needed == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -46,7 +46,7 @@ jobs:
           persist-credentials: false
       - name: Build and check the release wrapper
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
           python3 -m unittest discover -s tests -v
           python3 scripts/build_installer.py --revision "$GITHUB_SHA" --version "$VERSION" --output .ci-installer
@@ -54,7 +54,7 @@ jobs:
       - name: Publish the tested bytes
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.validate.outputs.version }}
           QUALIFICATION_URL: ${{ needs.validate.outputs.qualification_url }}
         run: |
           set -euo pipefail

@@ -43,6 +43,24 @@ specifiers = ["1.27.3"]
 checksum = "sha256:65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
 url = "https://dl.google.com/go/go1.27.3.linux-amd64.tar.gz"
 
+[[tools."http:agent-browser"]]
+version = "0.41.1"
+backend = "http:agent-browser"
+specifiers = ["0.41.1"]
+
+[tools."http:agent-browser"."platforms.linux-x64"]
+checksum = "sha256:2a89295b62ddd497986a9a80b52e1dbe4c1f6bd68ffde67eaae82eec2206af61"
+url = "https://github.com/vercel-labs/agent-browser/releases/download/v0.41.1/agent-browser-linux-x64"
+
+[[tools."http:chrome"]]
+version = "156.0.8078.80"
+backend = "http:chrome"
+specifiers = ["156.0.8078.80"]
+
+[tools."http:chrome"."platforms.linux-x64"]
+checksum = "sha256:b711c720f774be355197f32edf37e0651418ba036d92446ee2da19ac017540a7"
+url = "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.80/linux64/chrome-linux64.zip"
+
 [[tools."http:composer"]]
 version = "2.11.1"
 backend = "http:composer"
@@ -51,6 +69,15 @@ specifiers = ["2.11.1"]
 [tools."http:composer"."platforms.linux-x64"]
 checksum = "sha256:6f1b891e1d4927d62740276c540fb490e47689e19e102c49e8da849794882f8c"
 url = "https://getcomposer.org/download/2.11.1/composer.phar"
+
+[[tools."http:herdr"]]
+version = "0.9.5"
+backend = "http:herdr"
+specifiers = ["0.9.5"]
+
+[tools."http:herdr"."platforms.linux-x64"]
+checksum = "sha256:14d9e8bc8b4a9e0118d77c32266f76d461f09b40342eb23752960bd89f59929d"
+url = "https://github.com/herdrdev/herdr/releases/download/v0.9.5/herdr-linux-x86_64"
 
 [[tools.jq]]
 version = "1.8.2"

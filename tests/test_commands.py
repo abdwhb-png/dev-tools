@@ -19,6 +19,8 @@ class Commands(unittest.TestCase):
     def test_package_policy_is_scoped_and_survives_sudo(self):
         commands = []
         def external(argv, **kwargs):
+            if 'status' in argv:
+                return subprocess.CompletedProcess(argv, 1)
             commands.append(argv)
             settings = dict(arg.split('=', 1) for arg in argv if '=' in arg)
             self.assertIn('APT_CONFIG', settings, 'mise must receive an explicit per-invocation APT policy')
@@ -115,7 +117,7 @@ class Commands(unittest.TestCase):
             if 'status' in argv:
                 return subprocess.CompletedProcess(argv, 1, b'', b'')
             raise subprocess.CalledProcessError(1, argv)
-        with patch('subprocess.run', side_effect=external), patch('sys.stdin.isatty', return_value=True):
+        with patch('subprocess.run', side_effect=external), patch.object(app, 'login_github', side_effect=RuntimeError('login cancelled')), patch('sys.stdin.isatty', return_value=True):
             code, _, _ = self.invoke(['github'])
         self.assertEqual(code, 1)
         self.assertFalse(any('setup-git' in call for call in calls))
@@ -123,13 +125,15 @@ class Commands(unittest.TestCase):
     def test_fallback_warning_does_not_count_as_the_requested_php_version(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / 'mise.toml').write_text('[tools]\nphp="8.5.12"\n')
+            (root / 'mise.toml').write_text('[tools]\nphp="8.5.12"\nchrome="156.0.8078.80"\n')
             (root / 'php-modules.txt').write_text('Core\n')
             for series in ('noble', 'resolute'):
                 (root / f'mise.{series}.toml').write_text('[bootstrap.packages]\n"apt:git"="1:2.56.0-0ppa1~ubuntu24.04.2"\n')
             binary = root / 'mise'
             binary.touch()
             def external(argv, **kwargs):
+                if 'chrome' in argv:
+                    return subprocess.CompletedProcess(argv, 0, 'Google Chrome for Testing 156.0.8078.80', '')
                 if 'php' in argv and '--version' in argv:
                     return subprocess.CompletedProcess(argv, 0, 'PHP 8.5.0', 'mise WARN php@8.5.12 is missing')
                 if 'git' in argv:
@@ -141,6 +145,7 @@ class Commands(unittest.TestCase):
                 code, _, error = self.invoke(['check', '--tools-only'])
             self.assertEqual(code, 1)
             self.assertIn('php', error)
+            self.assertNotIn('chrome', error)
 
     @unittest.skipUnless(os.environ.get('DEV_TOOLS_MISE'), 'requires an explicitly supplied verified mise binary')
     def test_native_mise_loads_the_isolated_configuration(self):

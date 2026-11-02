@@ -9,7 +9,30 @@ concurrency:
 permissions:
   contents: read
 jobs:
+  evidence:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      reused: ${{ steps.lookup.outputs.reused }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: lookup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if test "$GITHUB_EVENT_NAME" = workflow_dispatch; then
+            echo 'reused=false' >> "$GITHUB_OUTPUT"
+          else
+            python3 scripts/qualification.py --repository "$GITHUB_REPOSITORY" --revision "$GITHUB_SHA" --allow-missing
+          fi
   build:
+    needs: evidence
+    if: needs.evidence.outputs.reused != 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -17,14 +40,15 @@ jobs:
           persist-credentials: false
       - run: python3 scripts/build_installer.py --revision "$GITHUB_SHA" --version "$VERSION" --output .ci-installer
         env:
-          VERSION: ${{ inputs.version || 'v0.0.0-ci' }}
+          VERSION: v0.0.0-ci
       - uses: actions/upload-artifact@v4
         with:
           name: installer-candidate
           path: .ci-installer
           include-hidden-files: true
   isolated:
-    needs: build
+    needs: [evidence, build]
+    if: always() && needs.evidence.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
     permissions:
       contents: read
       actions: read
@@ -35,6 +59,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Verify CI token can read qualification artifacts
+        if: needs.build.result == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
