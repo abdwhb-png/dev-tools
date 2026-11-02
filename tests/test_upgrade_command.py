@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import hashlib
 import io
 import json
@@ -24,11 +25,15 @@ class UpgradeCommand(unittest.TestCase):
             return code, network.call_count, command.call_args_list
 
     def test_current_release_does_not_download_or_execute_installer(self):
-        with tempfile.TemporaryDirectory() as directory:
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(output):
             code, requests, calls = self.invoke(directory,'a'*40,b'#!/bin/sh\nexit 0\n')
         self.assertEqual(code,0)
         self.assertEqual(requests,1)
         self.assertEqual(calls,[])
+        self.assertIn('Source already up to date:', output.getvalue())
+        self.assertIn('dev-tools check', output.getvalue())
+        self.assertIn('dev-tools bootstrap', output.getvalue())
 
     def test_upgrade_uses_verified_installer_and_cleans_temporary_file(self):
         with tempfile.TemporaryDirectory() as directory:

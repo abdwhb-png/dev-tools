@@ -26,7 +26,14 @@ main() {
     command -v git >/dev/null 2>&1 || missing="$missing git"
     test -x /usr/bin/python3 || missing="$missing python3"
     test -s /etc/ssl/certs/ca-certificates.crt || missing="$missing ca-certificates"
-    printf 'Install %s (%s) into %s\nMissing prerequisites:%s\n' "$version" "$revision" "$destination" "${missing:- none}"
+    action='Install developer tools'
+    if test -e "$destination" || test -L "$destination"; then
+        action='Check or repair the existing developer tools installation'
+        if test "$upgrade" = 1; then
+            action='Update or repair the developer tools installation'
+        fi
+    fi
+    printf '%s: %s (%s) in %s\nMissing prerequisites:%s\n' "$action" "$version" "$revision" "$destination" "${missing:- none}"
     test "$preview" = 0 || return 0
     test "$(id -u)" != 0 || { echo 'Run as a regular user with sudo access, not root.' >&2; return 1; }
     command -v sudo >/dev/null 2>&1 || { echo 'sudo is required; ask the administrator to grant sudo access.' >&2; return 1; }
@@ -35,7 +42,11 @@ main() {
             echo 'An interactive terminal is required; use --yes for unattended installation.' >&2
             return 1
         fi
-        printf 'Install prerequisites and developer tools? [y/N] ' >/dev/tty
+        question="$action"
+        if test -n "$missing"; then
+            question="$question (including missing prerequisites)"
+        fi
+        printf '%s? [y/N] ' "$question" >/dev/tty
         read -r answer </dev/tty
         case "$answer" in y|Y|yes|YES) ;; *) echo 'Cancelled; no changes applied.'; return 1 ;; esac
     fi
@@ -49,7 +60,7 @@ main() {
         checkout_status=$(git -C "$destination" status --porcelain)
         test "$(git -C "$destination" remote get-url origin)" = 'https://github.com/abdwhb-png/dev-tools.git' &&
         test -z "$checkout_status" || {
-            echo 'Existing checkout differs or is modified; no automatic release upgrade or overwrite.' >&2
+            echo 'Existing checkout has a foreign origin or local changes; refusing to overwrite it.' >&2
             return 1
         }
         if test "$(git -C "$destination" rev-parse HEAD)" != "$revision"; then
@@ -72,7 +83,7 @@ main() {
         trap - 0 HUP INT TERM
     fi
     sh "$destination/bootstrap.sh" --yes
-    printf '\nInstalled %s (%s). Open a new terminal, then run:\ndev-tools github\ndev-tools check\nFuture updates: dev-tools upgrade\n' "$version" "$revision"
+    printf '\nDeveloper tools ready: %s (%s).\n' "$version" "$revision"
 }
 
 # Parse the complete script before allowing child processes to consume input.

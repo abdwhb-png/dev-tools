@@ -72,6 +72,8 @@ sys.exit(subprocess.call(['/usr/bin/git', *args]))
         for pipe in (False, True):
             result = self.invoke('--yes', pipe=pipe)
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('Developer tools ready: v0.1.0', result.stdout)
+            self.assertNotIn('Open a new terminal', result.stdout, 'bootstrap owns the next-step instructions')
         self.assertEqual(self.trace.read_text(), 'ranran')
         self.assertEqual(subprocess.check_output(['git', '-C', str(self.destination), 'rev-parse', 'HEAD'], text=True).strip(), self.sha)
 
@@ -98,7 +100,7 @@ sys.exit(subprocess.call(['/usr/bin/git', *args]))
         self.env['BOOTSTRAP_EXIT'] = '7'
         result = self.invoke('--yes')
         self.assertEqual(result.returncode, 7)
-        self.assertNotIn('Installed v0.1.0', result.stdout)
+        self.assertNotIn('Developer tools ready:', result.stdout)
 
     def test_missing_git_apt_failure_never_runs_bootstrap(self):
         bin_dir = self.root / 'bin'
@@ -151,3 +153,33 @@ sys.exit(subprocess.call(['/usr/bin/git', *args]))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.destination / 'new-file').exists())
         self.assertEqual(self.invoke('--yes', '--upgrade').returncode, 0)
+
+    def test_confirmation_only_names_the_work_that_can_run(self):
+        def decline(*options):
+            command = 'sh ' + shlex.quote(str(self.installer)) + ''.join(' ' + shlex.quote(option) for option in options)
+            result = subprocess.run(['script', '-qec', command, '/dev/null'], input='n\n', env=self.env | {'SHELL': '/bin/sh'}, capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0)
+            return result.stdout
+        output = decline()
+        self.assertIn('Missing prerequisites: none', output)
+        self.assertIn('Install developer tools? [y/N]', output)
+        self.assertNotIn('Install prerequisites', output)
+        self.assertFalse(self.destination.exists())
+        self.assertEqual(self.invoke('--yes').returncode, 0)
+        self.assertIn('Check or repair the existing developer tools installation?', decline())
+        self.assertIn('Update or repair the developer tools installation?', decline('--upgrade'))
+        self.assertEqual(self.trace.read_text(), 'ran')
+
+    def test_missing_prerequisites_are_named_before_consent(self):
+        bin_dir = self.root / 'bin'
+        (bin_dir / 'git').rename(bin_dir / 'git.disabled')
+        uname = bin_dir / 'uname'
+        uname.write_text('#!/bin/sh\ncase "$1" in -s) echo Linux;; -m) echo x86_64;; esac\n')
+        uname.chmod(0o755)
+        self.env['PATH'] = str(bin_dir)
+        result = subprocess.run(['/usr/bin/script', '-qec', '/bin/sh ' + shlex.quote(str(self.installer)), '/dev/null'], input='n\n', env=self.env | {'SHELL': '/bin/sh'}, capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Missing prerequisites: git', result.stdout)
+        self.assertIn('Install developer tools (including missing prerequisites)? [y/N]', result.stdout)
+        self.assertNotIn('unexpected-sudo', result.stdout)
+        self.assertFalse(self.trace.exists())

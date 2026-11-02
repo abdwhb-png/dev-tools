@@ -58,7 +58,15 @@ class Commands(unittest.TestCase):
                 code, _, error = self.invoke(['bootstrap', '--dry-run'])
             self.assertEqual(code, 1)
             self.assertIn('collision', error)
+            self.assertNotIn('Completed APT changes', error)
             command.assert_not_called()
+
+    def test_interrupt_reports_cancellation_without_a_traceback(self):
+        with patch('subprocess.run', side_effect=KeyboardInterrupt):
+            code, _, error = self.invoke(['github'])
+        self.assertEqual(code, 130)
+        self.assertIn('Cancelled', error)
+        self.assertNotIn('Completed APT changes', error)
 
     def test_unsupported_host_is_rejected_without_commands(self):
         with patch('platform.machine', return_value='aarch64'), patch('subprocess.run') as command:
