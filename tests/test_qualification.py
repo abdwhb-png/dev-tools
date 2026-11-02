@@ -21,7 +21,10 @@ class Qualification(unittest.TestCase):
     def test_declared_run_head_is_insufficient_if_installed_source_differs(self):
         self.check_reuse(documentation=True, complete=True, succeeds=False, source_matches=False)
 
-    def check_reuse(self, documentation, complete, succeeds, source_matches=True):
+    def test_release_workflow_change_reuses_runtime_evidence(self):
+        self.check_reuse(documentation=False, complete=True, succeeds=True, control=True)
+
+    def check_reuse(self, documentation, complete, succeeds, source_matches=True, control=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             repo = root / 'repo'
@@ -35,7 +38,9 @@ class Qualification(unittest.TestCase):
             git('add', '.')
             git('commit', '-qm', 'qualified')
             qualified = git('rev-parse', 'HEAD')
-            (repo / ('README.md' if documentation else 'bootstrap.sh')).write_text('changed')
+            changed = repo / ('.github/workflows/release.yml' if control else ('README.md' if documentation else 'bootstrap.sh'))
+            changed.parent.mkdir(parents=True, exist_ok=True)
+            changed.write_text('changed')
             git('add', '.')
             git('commit', '-qm', 'candidate')
             candidate = git('rev-parse', 'HEAD')
