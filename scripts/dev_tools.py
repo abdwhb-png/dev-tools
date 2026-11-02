@@ -255,7 +255,7 @@ def check(args):
         argv = ['version'] if command == 'go' else ['--version']
         result = subprocess.run([str(mise), 'exec', '--', command, *argv], cwd=ROOT, env=env, capture_output=True, text=True)
         text = result.stdout + result.stderr
-        versions = re.findall(r'(?<![\d.])v?(\d+\.\d+(?:\.\d+)?(?:RC\d+|[ab]\d+)?)', text)
+        versions = re.findall(r'(?<![\d.])v?(\d+\.\d+(?:\.\d+){0,2}(?:RC\d+|[ab]\d+)?)', text)
         valid = result.returncode == 0 and bool(versions) and versions[0] == expected
         print(f'{command}: {"OK" if valid else "MISMATCH"} (expected {expected})')
         if not valid:
