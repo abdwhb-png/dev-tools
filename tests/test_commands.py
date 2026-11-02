@@ -19,6 +19,8 @@ class Commands(unittest.TestCase):
     def test_package_policy_is_scoped_and_survives_sudo(self):
         commands = []
         def external(argv, **kwargs):
+            if 'status' in argv:
+                return subprocess.CompletedProcess(argv, 1)
             commands.append(argv)
             settings = dict(arg.split('=', 1) for arg in argv if '=' in arg)
             self.assertIn('APT_CONFIG', settings, 'mise must receive an explicit per-invocation APT policy')
@@ -115,7 +117,7 @@ class Commands(unittest.TestCase):
             if 'status' in argv:
                 return subprocess.CompletedProcess(argv, 1, b'', b'')
             raise subprocess.CalledProcessError(1, argv)
-        with patch('subprocess.run', side_effect=external), patch('sys.stdin.isatty', return_value=True):
+        with patch('subprocess.run', side_effect=external), patch.object(app, 'login_github', side_effect=RuntimeError('login cancelled')), patch('sys.stdin.isatty', return_value=True):
             code, _, _ = self.invoke(['github'])
         self.assertEqual(code, 1)
         self.assertFalse(any('setup-git' in call for call in calls))

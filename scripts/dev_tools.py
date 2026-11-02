@@ -1,6 +1,8 @@
 """Prepare developer tools using mise's configuration and Ubuntu's package manager."""
 
 import argparse
+import difflib
+import time
 import hashlib
 import json
 import os
@@ -180,6 +182,12 @@ def publish_launcher(mise):
 
 
 def install_system_packages(mise, env):
+    status = subprocess.run([str(mise), 'bootstrap', 'packages', 'status', '--missing'], cwd=ROOT, env=env)
+    if status.returncode == 0:
+        print('System packages already conform; APT skipped.')
+        return
+    if status.returncode != 1:
+        raise RuntimeError('Unable to inspect system packages')
     # mise's pinned APT backend has no install-recommends option and sudo drops
     # APT_CONFIG. Elevate only the native package operation, with explicit inputs.
     with tempfile.TemporaryDirectory(prefix='dev-tools-apt-') as directory:
@@ -220,6 +228,8 @@ def bootstrap(args):
         target.symlink_to(ROOT, target_is_directory=True)
     publish_launcher(mise)
     install_shells(mise, env)
+    install_browser_link(mise, env)
+    herdr_config(argparse.Namespace(apply=False))
     check(argparse.Namespace(tools_only=True))
     print('Tools ready. Open a new terminal, then run: mise run dev-tools:github')
     return 0
@@ -229,7 +239,7 @@ def tool_versions():
     result = {}
     aliases = {'node': 'node', 'python': 'python3', 'github-cli': 'gh', 'ripgrep': 'rg', 'http:composer': 'composer'}
     for name, value in configuration()['tools'].items():
-        result[aliases.get(name, name)] = value['version'] if isinstance(value, dict) else value
+        result[aliases.get(name, name.removeprefix('http:'))] = value['version'] if isinstance(value, dict) else value
     package = php_packages(host())['apt:git']
     result['git'] = package.split(':')[-1].split('-')[0]
     return result
@@ -281,9 +291,77 @@ def github(args):
     if status.returncode:
         if not sys.stdin.isatty():
             raise RuntimeError('GitHub login requires an interactive terminal; tools remain installed.')
-        run(prefix + ['auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--web'], cwd=ROOT, env=env)
-    run(prefix + ['config', 'set', 'git_protocol', 'https', '--host', 'github.com'], cwd=ROOT, env=env)
-    run(prefix + ['auth', 'setup-git', '--hostname', 'github.com'], cwd=ROOT, env=env)
+        login_github(prefix, env)
+    protocol = subprocess.run([str(p) for p in prefix + ['config', 'get', 'git_protocol', '--host', 'github.com']], cwd=ROOT, env=env, capture_output=True, text=True)
+    if protocol.returncode or protocol.stdout.strip() != 'https':
+        run(prefix + ['config', 'set', 'git_protocol', 'https', '--host', 'github.com'], cwd=ROOT, env=env)
+    helper = subprocess.run(['git', 'config', '--get', 'credential.https://github.com.helper'], capture_output=True, text=True)
+    if helper.returncode or 'gh auth git-credential' not in helper.stdout:
+        run(prefix + ['auth', 'setup-git', '--hostname', 'github.com'], cwd=ROOT, env=env)
+    return 0
+
+
+def login_github(prefix, env):
+    print('\nGITHUB SIGN-IN — ACTION REQUIRED\nOpen the address below on your own computer.\n', flush=True)
+    login_env = {k: v for k, v in env.items() if k not in ('GH_DEBUG', 'GH_FORCE_TTY')}
+    login_env.update(GH_PROMPT_DISABLED='1', NO_COLOR='1')
+    command = [str(p) for p in prefix + ['auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--web', '--clipboard=false']]
+    process = subprocess.Popen(command, cwd=ROOT, env=login_env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        for line in process.stdout:
+            code = re.search(r'First copy your one-time code: ([A-Z0-9-]+)', line)
+            if code:
+                print('\n' + '=' * 48 + '\nCODE: ' + code.group(1) + '\nhttps://github.com/login/device\n' + '=' * 48 + '\nWaiting for authorization…', flush=True)
+            else:
+                print(line.rstrip(), flush=True)
+        if process.wait():
+            raise RuntimeError('GitHub login failed or expired; rerun dev-tools:github.')
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        process.stdout.close()
+
+
+def install_browser_link(mise, env):
+    source = Path(subprocess.check_output([str(mise), 'which', 'chrome'], cwd=ROOT, env=env, text=True).strip())
+    target = Path(os.environ.get('XDG_DATA_HOME', home() / '.local/share')) / 'dev-tools/browser/chrome'
+    if target.is_symlink() and target.resolve() == source.resolve():
+        return
+    if target.exists() or target.is_symlink():
+        installs = Path(os.environ.get('MISE_DATA_DIR', home() / '.local/share/mise')) / 'installs/http-chrome'
+        if not target.is_symlink() or not target.resolve().is_relative_to(installs.resolve()):
+            raise RuntimeError(f'Browser launcher collision: {target}')
+        target.unlink()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.symlink_to(source)
+
+
+def herdr_config(args):
+    source = ROOT / 'config/herdr.toml'
+    target = Path(os.environ.get('XDG_CONFIG_HOME', home() / '.config')) / 'herdr/config.toml'
+    if target.exists():
+        if target.read_bytes() == source.read_bytes():
+            print('Herdr preferences already conform.')
+            return 0
+        if not args.apply:
+            print('Personal Herdr preferences preserved. To review/apply the profile: mise run dev-tools:herdr-config -- --apply')
+            return 0
+        print(''.join(difflib.unified_diff(target.read_text().splitlines(True), source.read_text().splitlines(True), fromfile='current', tofile='profile')))
+        if not sys.stdin.isatty() or input('Back up and replace Herdr preferences? [y/N] ').lower() not in ('y', 'yes'):
+            raise RuntimeError('Herdr preferences unchanged.')
+        backup = target.with_name(f'config.toml.backup-{time.time_ns()}')
+        shutil.copy2(target, backup)
+        print(f'Backup: {backup}')
+    with tempfile.TemporaryDirectory(prefix='dev-tools-herdr-') as directory:
+        config = Path(directory)
+        (config / 'mise.toml').write_text('[dotfiles]\n' + json.dumps(str(target)) + ' = { source = ' + json.dumps(str(source)) + ', mode = "copy" }\n')
+        env = isolated_env() | {'MISE_CEILING_PATHS': str(config.parent), 'MISE_TRUSTED_CONFIG_PATHS': str(config)}
+        run([mise_path(), 'dot', 'apply', '--yes'], cwd=config, env=env)
     return 0
 
 
@@ -323,11 +401,13 @@ def main(argv=None):
     verify = commands.add_parser('check')
     verify.add_argument('--tools-only', action='store_true')
     commands.add_parser('github')
+    profile = commands.add_parser('herdr-config')
+    profile.add_argument('--apply', action='store_true')
     php = commands.add_parser('php-prepare')
     php.add_argument('version')
     args = parser.parse_args(argv)
     try:
-        return {'bootstrap': bootstrap, 'check': check, 'github': github, 'php-prepare': prepare_php}[args.command](args)
+        return {'bootstrap': bootstrap, 'check': check, 'github': github, 'herdr-config': herdr_config, 'php-prepare': prepare_php}[args.command](args)
     except (RuntimeError, OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f'{args.command} failed: {error}. Completed APT changes and tool downloads are retained; correct the error and rerun.', file=sys.stderr)
         return 1

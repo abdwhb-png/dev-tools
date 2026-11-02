@@ -1,0 +1,30 @@
+onboarding = false
+
+[theme]
+name = "terminal"
+auto_switch = false
+
+[terminal]
+default_shell = "/usr/bin/zsh"
+shell_mode = "login"
+
+[keys]
+prefix = "ctrl+b"
+new_tab = "prefix+c"
+close_tab = "prefix+shift+x"
+split_vertical = "prefix+v"
+split_horizontal = "prefix+minus"
+focus_pane_left = "prefix+h"
+focus_pane_right = "prefix+l"
+focus_pane_up = "prefix+k"
+focus_pane_down = "prefix+j"
+close_pane = "prefix+x"
+
+[ui]
+show_agent_labels_on_pane_borders = true
+hide_tab_bar_when_single_tab = true
+prompt_new_tab_name = false
+agent_panel_sort = "spaces"
+
+[ui.toast]
+delivery = "herdr"
