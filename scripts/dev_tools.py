@@ -123,6 +123,7 @@ def preview(series):
     print('APT sources: https://packages.sury.org/php/ and git-core/ppa')
     print(f'Global mise configuration: {fragment()} -> {ROOT}')
     print('Shell activation: managed blocks for installed Bash/Zsh shells.')
+    print('Herdr Core: official installer if absent; existing versions preserved. TUI is optional: dev-tools install herdr-tui.')
     print('APT applies changes incrementally; completed package changes are not rolled back.')
 
 
@@ -204,6 +205,44 @@ def install_system_packages(mise, env):
              mise, 'bootstrap', 'packages', 'apply', '--manager', 'apt', '--yes'], cwd=ROOT)
 
 
+def herdr_binary(component):
+    names = ('herdr-core', 'hc') if component == 'core' else ('herdr',)
+    for name in names:
+        path = shutil.which(name)
+        if path:
+            result = subprocess.run([path, '--version'], capture_output=True, text=True, timeout=10)
+            prefix = 'hc' if component == 'core' else 'herdr'
+            if result.returncode == 0 and re.fullmatch(prefix + r' \d+\.\d+\.\d+[^\s]*', result.stdout.strip()):
+                return path, result.stdout.strip()
+            raise RuntimeError(f'Herdr executable collision: {path}; inspect it before retrying.')
+    return None
+
+
+def install_herdr(component):
+    existing = herdr_binary(component)
+    if existing:
+        print(f'{existing[1]} already installed at {existing[0]}; installer skipped. Use ' + ('hc update.' if component == 'core' else 'herdr update.'))
+        return
+    url = 'https://releases.herdr.dev/core/install.sh' if component == 'core' else 'https://herdr.dev/install.sh'
+    with tempfile.TemporaryDirectory(prefix='dev-tools-herdr-install-') as directory:
+        script = Path(directory) / 'install.sh'
+        run(['curl', '-fsSL', '--output', script, url])
+        run(['sh', script])
+    if not herdr_binary(component):
+        raise RuntimeError(f'Official Herdr {component} installer completed but its command is absent from PATH.')
+
+
+def install_optional(args):
+    if args.dry_run:
+        print('Install Herdr TUI using https://herdr.dev/install.sh if absent; preserve existing versions and preferences.')
+        return 0
+    if os.geteuid() == 0:
+        raise RuntimeError('Run as a regular user, not root.')
+    install_herdr('tui')
+    herdr_config(argparse.Namespace(apply=False))
+    return 0
+
+
 def bootstrap(args):
     series = host()
     preflight()
@@ -230,7 +269,8 @@ def bootstrap(args):
     publish_launchers(mise)
     install_shells(mise, env)
     install_browser_link(mise, env)
-    herdr_config(argparse.Namespace(apply=False))
+    os.environ['PATH'] = str(home() / '.local/bin') + os.pathsep + os.environ.get('PATH', '')
+    install_herdr('core')
     check(argparse.Namespace(tools_only=True))
     print('Tools ready. Open a new terminal, then run: dev-tools github; dev-tools check. Future updates: dev-tools upgrade.')
     return 0
@@ -270,6 +310,11 @@ def check(args):
     # Report the actual command paths without reading credentials or environment files.
     run([mise, 'which', 'php'], cwd=ROOT, env=env)
     run([mise, 'which', 'composer'], cwd=ROOT, env=env)
+    core = herdr_binary('core')
+    if core:
+        print(f'Herdr Core: {core[1]} ({core[0]}); updates: hc update')
+    else:
+        failures.append('Herdr Core absent: run dev-tools bootstrap')
     if not args.tools_only:
         status = subprocess.run([str(mise), 'exec', '--', 'gh', 'auth', 'status', '--hostname', 'github.com', '--active'], cwd=ROOT, env=env, capture_output=True)
         if status.returncode:
@@ -445,13 +490,16 @@ def main(argv=None):
     update = commands.add_parser('upgrade')
     update.add_argument('--yes', action='store_true')
     update.add_argument('--dry-run', action='store_true')
+    install = commands.add_parser('install')
+    install.add_argument('tool', choices=['herdr-tui'])
+    install.add_argument('--dry-run', action='store_true')
     profile = commands.add_parser('herdr-config')
     profile.add_argument('--apply', action='store_true')
     php = commands.add_parser('php-prepare')
     php.add_argument('version')
     args = parser.parse_args(argv)
     try:
-        return {'bootstrap': bootstrap, 'check': check, 'github': github, 'upgrade': upgrade, 'herdr-config': herdr_config, 'php-prepare': prepare_php}[args.command](args)
+        return {'install': install_optional, 'bootstrap': bootstrap, 'check': check, 'github': github, 'upgrade': upgrade, 'herdr-config': herdr_config, 'php-prepare': prepare_php}[args.command](args)
     except KeyboardInterrupt:
         print('Cancelled. Any completed changes are retained.', file=sys.stderr)
         return 130

@@ -24,8 +24,8 @@ python3 - <<'STATE' > evidence/before-replay.json
 import json,os
 from pathlib import Path
 home=Path.home()
-paths=[home/p for p in ('.profile','.bashrc','.zshrc','.zshenv','.zprofile','.config/herdr/config.toml','.local/bin/mise','.local/bin/dev-tools','.config/mise/conf.d/dev-tools','.local/share/dev-tools/browser/chrome')]
-print(json.dumps({str(p):[p.lstat().st_mtime_ns,p.readlink().as_posix() if p.is_symlink() else p.read_text()] for p in paths if p.exists()},sort_keys=True))
+paths=[home/p for p in ('.profile','.bashrc','.zshrc','.zshenv','.zprofile','.local/bin/herdr-core','.local/bin/hc','.local/bin/mise','.local/bin/dev-tools','.config/mise/conf.d/dev-tools','.local/share/dev-tools/browser/chrome')]
+print(json.dumps({str(p):[p.lstat().st_mtime_ns,p.readlink().as_posix() if p.is_symlink() else (__import__('hashlib').sha256(p.read_bytes()).hexdigest() if p.name == 'herdr-core' else p.read_text())] for p in paths if p.exists()},sort_keys=True))
 STATE
 cat .ci-installer | sh -s -- --yes --upgrade | tee evidence/replay.log
 python3 - <<'STATE'
@@ -34,7 +34,7 @@ from pathlib import Path
 before=json.loads(Path('evidence/before-replay.json').read_text())
 for name, expected in before.items():
     p=Path(name)
-    actual=[p.lstat().st_mtime_ns,p.readlink().as_posix() if p.is_symlink() else p.read_text()]
+    actual=[p.lstat().st_mtime_ns,p.readlink().as_posix() if p.is_symlink() else (__import__('hashlib').sha256(p.read_bytes()).hexdigest() if p.name == 'herdr-core' else p.read_text())]
     assert actual==expected, 'Replay changed '+name
 text=Path('evidence/replay.log').read_text()
 assert not re.search(r'\bDownloading\b|bootstrap packages apply|apt-get',text,re.I), 'Replay repeated an installation operation'
@@ -101,7 +101,7 @@ printf '<html><body><button>Fixture button</button></body></html>' > "$fixture/b
 cleanup_agentic() {
   mise exec -- agent-browser --session dev-tools-ci close || true
   mise exec -- agent-browser dashboard stop || true
-  mise exec -- herdr --session dev-tools-ci server stop || true
+  HC_SESSION=dev-tools-ci herdr-core server stop || true
   rm -rf "$fixture"
 }
 trap cleanup_agentic EXIT
@@ -110,15 +110,25 @@ mise exec -- agent-browser --session dev-tools-ci snapshot -i | grep 'Fixture bu
 mise exec -- agent-browser --session dev-tools-ci screenshot "$root/evidence/browser.png"
 mise exec -- agent-browser dashboard start
 curl -fsS http://127.0.0.1:4848/ > evidence/dashboard.html
-mise exec -- herdr --session dev-tools-ci server > evidence/herdr.log 2>&1 &
+HC_SESSION=dev-tools-ci herdr-core run --bg --name fixture sh -c 'printf core-fixture; sleep 30' > evidence/herdr-core-run.txt
 for attempt in $(seq 1 30); do
-  if mise exec -- herdr --session dev-tools-ci status server > evidence/herdr-status.txt; then break; fi
+  HC_SESSION=dev-tools-ci herdr-core read fixture --lines 20 > evidence/herdr-core-read.txt
+  if grep -q core-fixture evidence/herdr-core-read.txt; then break; fi
   sleep 1
 done
-mise exec -- herdr --session dev-tools-ci status server
+grep -q core-fixture evidence/herdr-core-read.txt
+HC_SESSION=dev-tools-ci herdr-core ls > evidence/herdr-core-status.txt
+herdr-core --version > evidence/herdr-core-version.txt
 cleanup_agentic
 trap 'rm -rf "$fixture"' EXIT
 # Fresh user configuration, sharing only immutable download caches.
 fresh_home=$(mktemp -d)
 env HOME="$fresh_home" XDG_CONFIG_HOME="$fresh_home/.config" XDG_DATA_HOME="$fresh_home/.local/share" XDG_CACHE_HOME="$HOME/.cache" sh .ci-installer --yes
+test ! -e "$fresh_home/.local/bin/herdr"
+test ! -e "$fresh_home/.config/herdr/config.toml"
+env HOME="$fresh_home" PATH="$fresh_home/.local/bin:$PATH" dev-tools install herdr-tui
+herdr_stamp=$(stat -c %Y "$fresh_home/.local/bin/herdr")
+env HOME="$fresh_home" PATH="$fresh_home/.local/bin:$PATH" dev-tools install herdr-tui
+[[ $(stat -c %Y "$fresh_home/.local/bin/herdr") == "$herdr_stamp" ]]
+"$fresh_home/.local/bin/herdr" --version > evidence/herdr-tui-version.txt
 rm -rf "$fresh_home"

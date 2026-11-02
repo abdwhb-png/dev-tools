@@ -111,9 +111,15 @@ Publication only runs isolated tests and syntax checks, renders the versioned wr
 
 ## Agentic tools
 
-The configuration includes agent-browser 0.41.1, Chrome for Testing 156.0.8078.80 and Herdr 0.9.5 as locked native downloads. Zsh and browser system libraries come from Ubuntu. No agent CLI, API credentials, browser profile, SSH configuration or running session is copied.
+Herdr Core is installed by default using its [official installer](https://releases.herdr.dev/core/install.sh). Existing installations are preserved. Herdr TUI is optional: run `dev-tools install herdr-tui` to use its [official installer](https://herdr.dev/install.sh), or append `--dry-run` for an offline preview. No Herdr desktop app is installed on Ubuntu.
 
-The reviewed Herdr profile in `config/herdr.toml` reproduces the local terminal theme, Ctrl+B bindings, UI preferences and Zsh login shell. It is copied to a regular file, preserving existing personal preferences. To explicitly review, back up and replace them, use `dev-tools herdr-config --apply`. Rerunning with identical contents does not create another backup or rewrite the file. Existing Herdr servers are never restarted by bootstrap.
+Herdr is managed outside mise. Use `hc update` for Core and `herdr update` for the TUI; `dev-tools upgrade` does not update or downgrade either one. Checks report Core's actual version rather than requiring a repository pin. These installations follow official releases, so CI evidence records the versions installed on its run date rather than a locked Herdr version.
+
+When upgrading an older dev-tools installation, the TUI declaration is removed from the global mise profile. Existing binaries, preferences and sessions are not deleted. Run `dev-tools install herdr-tui` explicitly to install the official standalone command if the old mise shim no longer resolves. No TUI preferences are converted into Core or Windows application settings.
+
+The configuration includes agent-browser 0.41.1 and Chrome for Testing 156.0.8078.80 as locked native downloads. Zsh and browser system libraries come from Ubuntu. No agent CLI, API credentials, browser profile, SSH configuration or running session is copied.
+
+The reviewed Herdr profile in `config/herdr.toml` reproduces the local terminal theme, Ctrl+B bindings, UI preferences and Zsh login shell. After explicit TUI installation, it is copied to a regular file, preserving existing personal preferences. To explicitly review, back up and replace them, use `dev-tools herdr-config --apply`. Rerunning with identical contents does not create another backup or rewrite the file. Existing Herdr servers are never restarted by bootstrap.
 
 Use `dev-tools upgrade` to move a clean managed checkout to the latest stable release; older installations use the one-time pipe command above. It still refuses foreign origins, modified checkouts and unrequested version changes. A same-version upgrade does not fetch Git again; matching APT packages skip sudo/APT, locked tool installs reuse existing installations, and identical Herdr preferences are left alone. No system rollback is promised after a partial failure; rerun the same installer to repair it. The streamed installer preview remains offline; the global upgrade preview only reads release metadata.
 
