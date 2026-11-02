@@ -1,16 +1,11 @@
 name: Development tools qualification
 on:
-  workflow_call:
-    inputs:
-      version:
-        type: string
-        default: v0.0.0-ci
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths-ignore: ['**/*.md']
   pull_request:
     paths-ignore: ['**/*.md']
+concurrency:
+  group: qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
