@@ -142,7 +142,8 @@ def link_php(mise, version, env):
         raise RuntimeError(f'PHP executable collision: {target}')
     else:
         target.symlink_to(executable)
-    run([mise, 'link', f'php@{version}', prefix], env=env, cwd=ROOT)
+    # Linking a system runtime must not regenerate the reviewed download lockfile.
+    run([mise, 'link', f'php@{version}', prefix], env=env | {'MISE_LOCKFILE': '0'}, cwd=ROOT)
 
 
 def install_shells(mise, env):
@@ -178,6 +179,20 @@ def publish_launcher(mise):
     target.symlink_to(mise)
 
 
+def install_system_packages(mise, env):
+    # mise's pinned APT backend has no install-recommends option and sudo drops
+    # APT_CONFIG. Elevate only the native package operation, with explicit inputs.
+    with tempfile.TemporaryDirectory(prefix='dev-tools-apt-') as directory:
+        policy = Path(directory) / 'apt.conf'
+        policy.write_text('APT::Install-Recommends "false";\nAPT::Install-Suggests "false";\n')
+        names = ('MISE_GLOBAL_CONFIG_FILE', 'MISE_SYSTEM_CONFIG_FILE', 'MISE_CEILING_PATHS',
+                 'MISE_TRUSTED_CONFIG_PATHS', 'MISE_AUTO_INSTALL', 'MISE_SELF_UPDATE_AUTO', 'MISE_ENV')
+        settings = [f'{name}={env[name]}' for name in names if name in env]
+        run(['sudo', 'env', f'APT_CONFIG={policy}', 'MISE_DATA_DIR=/var/lib/dev-tools/mise',
+             'MISE_CACHE_DIR=/var/cache/dev-tools/mise', *settings,
+             mise, 'bootstrap', 'packages', 'apply', '--manager', 'apt', '--yes'], cwd=ROOT)
+
+
 def bootstrap(args):
     series = host()
     preflight()
@@ -194,7 +209,7 @@ def bootstrap(args):
         return 1
     mise = fetch_mise()
     env = isolated_env(series)
-    run([mise, 'bootstrap', 'packages', 'apply', '--manager', 'apt', '--yes'], env=env, cwd=ROOT)
+    install_system_packages(mise, env)
     link_php(mise, configuration()['tools']['php'], env)
     # Install only download-managed tools: PHP is supplied by APT and linked above.
     tools = [name for name in configuration()['tools'] if name != 'php']

@@ -2,6 +2,7 @@ import contextlib
 import importlib.util
 import io
 import os
+import re
 import subprocess
 from pathlib import Path
 import tempfile
@@ -15,6 +16,23 @@ spec.loader.exec_module(app)
 
 
 class Commands(unittest.TestCase):
+    def test_package_policy_is_scoped_and_survives_sudo(self):
+        commands = []
+        def external(argv, **kwargs):
+            commands.append(argv)
+            settings = dict(arg.split('=', 1) for arg in argv if '=' in arg)
+            self.assertIn('APT_CONFIG', settings, 'mise must receive an explicit per-invocation APT policy')
+            policy = Path(settings['APT_CONFIG'])
+            self.assertIn('APT::Install-Recommends "false"', policy.read_text())
+            self.assertEqual(argv[:2], ['sudo', 'env'])
+            self.assertNotIn('USER_SECRET', settings)
+            return subprocess.CompletedProcess(argv, 0)
+        with patch('subprocess.run', side_effect=external):
+            app.install_system_packages(Path('/verified/mise'), app.isolated_env('noble') | {'USER_SECRET': 'not-forwarded'})
+        self.assertEqual(len(commands), 1)
+        settings = dict(arg.split('=', 1) for arg in commands[0] if '=' in arg)
+        self.assertFalse(Path(settings['APT_CONFIG']).exists(), 'temporary policy must be removed')
+
     def invoke(self, args):
         output, error = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
@@ -142,6 +160,23 @@ class Commands(unittest.TestCase):
             self.assertNotIn('would install', result.stdout + result.stderr)
 
     @unittest.skipUnless(os.environ.get('DEV_TOOLS_MISE'), 'requires verified mise')
+    def test_global_task_uses_its_source_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / 'config/mise/conf.d'
+            config.mkdir(parents=True)
+            (config / 'dev-tools').symlink_to(ROOT, target_is_directory=True)
+            env = {k: v for k, v in os.environ.items() if not k.startswith('MISE_')}
+            env.update(HOME=directory, XDG_CONFIG_HOME=str(root / 'config'), XDG_DATA_HOME=str(root / 'data'), XDG_CACHE_HOME=str(root / 'cache'), MISE_TRUSTED_CONFIG_PATHS=str(ROOT), MISE_CEILING_PATHS=str(ROOT.parent))
+            for cwd in (ROOT, root):
+                with self.subTest(cwd=cwd):
+                    result = subprocess.run([os.environ['DEV_TOOLS_MISE'], 'run', '--dry-run', 'dev-tools:check', '--tools-only'], cwd=cwd, env=env, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    script = re.search(r'"([^"]+/scripts/dev_tools.py)"', result.stdout + result.stderr)
+                    self.assertIsNotNone(script, result.stdout + result.stderr)
+                    self.assertEqual(Path(script.group(1)).resolve(), ROOT / 'scripts/dev_tools.py')
+
+    @unittest.skipUnless(os.environ.get('DEV_TOOLS_MISE'), 'requires verified mise')
     def test_shell_setup_preserves_ubuntu_profile_and_sets_launcher_path(self):
         mise = Path(os.environ['DEV_TOOLS_MISE'])
         with tempfile.TemporaryDirectory() as directory:
@@ -164,16 +199,21 @@ class Commands(unittest.TestCase):
                 (project / name).write_bytes((ROOT / name).read_bytes())
             prefix = root / 'php'
             (prefix / 'bin').mkdir(parents=True)
+            actual = root / 'php-binary'
+            actual.write_text('#!/bin/sh\nprintf "8.5.12"\n')
+            actual.chmod(0o755)
             php = prefix / 'bin/php'
-            php.write_text('#!/bin/sh\necho "fixture PHP 8.5.12"\n')
-            php.chmod(0o755)
             env = app.isolated_env() | {'HOME': str(root), 'XDG_CONFIG_HOME': str(root / 'config'), 'XDG_DATA_HOME': str(root / 'data'), 'XDG_CACHE_HOME': str(root / 'cache'), 'MISE_CEILING_PATHS': str(root), 'MISE_TRUSTED_CONFIG_PATHS': str(project)}
             mise = os.environ['DEV_TOOLS_MISE']
-            linked = subprocess.run([mise, 'link', 'php@8.5.12', str(prefix)], cwd=project, env=env, capture_output=True, text=True)
-            self.assertEqual(linked.returncode, 0, linked.stderr)
+            original_lock = (project / 'mise.lock').read_bytes()
+            def system_path(value):
+                return actual if value == '/usr/bin/php8.5' else Path(value)
+            with patch.object(app, 'ROOT', project), patch.object(app, 'php_prefix', return_value=prefix), patch.object(app, 'Path', side_effect=system_path):
+                app.link_php(mise, '8.5.12', env)
+            self.assertEqual((project / 'mise.lock').read_bytes(), original_lock, 'PHP registration must preserve the reviewed lockfile')
             selected = subprocess.run([mise, 'which', 'php'], cwd=project, env=env, capture_output=True, text=True)
             self.assertEqual(selected.returncode, 0, selected.stderr)
-            self.assertEqual(Path(selected.stdout.strip()).resolve(), php)
+            self.assertEqual(Path(selected.stdout.strip()).resolve(), actual)
             result = subprocess.run([mise, 'install', '--locked', '--dry-run', 'node'], cwd=project, env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertNotIn('php@8.5.12', result.stderr)

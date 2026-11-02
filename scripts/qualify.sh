@@ -11,23 +11,46 @@ uname -a
 if [[ ${1:?platform required} == wsl2 ]]; then
   uname -r | grep -i microsoft-standard-WSL2
 fi
-python3 -m unittest discover -s tests -v
-bash bootstrap.sh --dry-run
-bash bootstrap.sh --yes
+sh .ci-installer --dry-run
+sh .ci-installer --yes
 export PATH="$HOME/.local/bin:$PATH"
 export DEV_TOOLS_MISE="$HOME/.local/bin/mise"
-python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s "${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/source/tests" -v
 python3 scripts/dev_tools.py check --tools-only
-bash bootstrap.sh --yes
+cat .ci-installer | sh -s -- --yes
 # Every real command is evaluated through the installed environment.
 mise exec -- php -r 'if ((new PDO("sqlite::memory:"))->query("select 1")->fetchColumn() != 1) exit(1); $i = new Imagick(); $i->newImage(1, 1, "white"); if (!class_exists("Redis") || !class_exists("MongoDB\\Driver\\Manager")) exit(1);'
 mise exec -- python3 -c 'import ssl, sqlite3; print(ssl.OPENSSL_VERSION)'
 mise exec -- bun -e 'if (1+1 !== 2) process.exit(1)'
-bash -lic 'node --version; php --version'
-zsh -lic 'node --version; php --version'
+export DEV_TOOLS_NODE_VERSION
+export DEV_TOOLS_PHP_VERSION
+DEV_TOOLS_NODE_VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("mise.toml", "rb"))["tools"]["node"])')
+DEV_TOOLS_PHP_VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("mise.toml", "rb"))["tools"]["php"])')
+bash -lic 'set -e; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
+zsh -lic 'set -e; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
 # A project must override the default and leaving it must restore the default.
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
+printf 'package main\nimport "fmt"\nfunc main() { fmt.Print("compiled") }\n' > "$fixture/main.go"
+[[ $(GOTOOLCHAIN=local mise exec -- go run "$fixture/main.go") == compiled ]]
+printf '{"name":"fixture/tools","description":"Qualification fixture","license":"MIT","require":{}}\n' > "$fixture/composer.json"
+mise exec -- composer --no-plugins --no-scripts validate --strict --no-check-publish "$fixture/composer.json"
+[[ -n ${GH_TOKEN:-} && -n ${GITHUB_REPOSITORY:-} ]] || { echo 'CI repository token is required for HTTPS qualification.' >&2; exit 1; }
+mise run dev-tools:github
+git config --get-all credential.https://github.com.helper > evidence/github-helper.txt
+python3 scripts/dev_tools.py check
+# Public cloning proves installation does not depend on GitHub credentials.
+GIT_TERMINAL_PROMPT=0 mise -C "$fixture" exec -- git -c credential.helper= -c http.https://github.com/.extraheader= clone --quiet --depth 1 "https://github.com/${GITHUB_REPOSITORY}.git" "$fixture/anonymous-clone"
+# Exercise the native Git credential protocol without printing or storing its token.
+mise exec -- python3 - <<'CREDENTIAL'
+import os, subprocess
+request = 'protocol=https\nhost=github.com\n\n'
+result = subprocess.run(['git', 'credential', 'fill'], input=request, capture_output=True, text=True, check=True)
+fields = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+if fields.get('password') != os.environ['GH_TOKEN']:
+    raise SystemExit('Git credential helper did not supply the CI credential')
+print('Git credential protocol verified; credential value withheld.')
+CREDENTIAL
 printf '[tools]\nnode = "24.18.0"\n' > "$fixture/mise.toml"
 mise trust "$fixture/mise.toml"
 mise -C "$fixture" install node
@@ -43,6 +66,7 @@ mise -C "$fixture/package-manager" install pnpm
 printf 'yes\n' | script -qec 'python3 scripts/dev_tools.py php-prepare 8.4.27' /dev/null
 printf '[tools]\nphp="8.4.27"\n' > "$fixture/mise.toml"
 [[ $(mise -C "$fixture" exec -- php -r 'echo PHP_VERSION;') == 8.4.27 ]]
+mise -C "$fixture" exec -- composer --version 2>&1 | grep 'PHP version 8.4.27'
 mise ls --json > evidence/tools.json
 mise exec -- php -m > evidence/php-modules.txt
 mise which php > evidence/php-path.txt

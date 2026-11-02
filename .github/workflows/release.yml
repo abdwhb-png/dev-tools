@@ -1,0 +1,57 @@
+name: Publish qualified installer
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Stable release tag, e.g. v0.1.0'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: installer-publication
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate publication target
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+  qualify:
+    needs: validate
+    uses: ./.github/workflows/qualification.yml
+    with:
+      version: ${{ inputs.version }}
+  publish:
+    needs: qualify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-candidate
+      - name: Publish the tested bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          mv .ci-installer install.sh
+          sha256sum install.sh > SHA256SUMS
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "$VERSION" --notes "Qualified Ubuntu/WSL2 installer. Source: $GITHUB_SHA. CI: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh release upload "$VERSION" install.sh SHA256SUMS --repo "$GITHUB_REPOSITORY"
+          gh release edit "$VERSION" --draft=false --latest --repo "$GITHUB_REPOSITORY"
+          for release in "$VERSION" latest; do
+            if test "$release" = latest; then
+              url="https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.sh"
+            else
+              url="https://github.com/$GITHUB_REPOSITORY/releases/download/$release/install.sh"
+            fi
+            curl --fail --location --retry 3 "$url" --output downloaded.sh
+            cmp install.sh downloaded.sh
+          done
