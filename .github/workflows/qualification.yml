@@ -24,12 +24,22 @@ jobs:
           path: .ci-installer
           include-hidden-files: true
   isolated:
+    needs: build
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Verify CI token can read qualification artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name installer-candidate --dir "$RUNNER_TEMP/evidence-token-check"
+          sh -n "$RUNNER_TEMP/evidence-token-check/.ci-installer"
       - run: python3 -m unittest discover -s tests -v
       - run: sh -n bootstrap.sh scripts/install.sh.in
       - run: bash -n scripts/qualify.sh

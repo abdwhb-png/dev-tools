@@ -61,7 +61,7 @@ else:
     print(json.dumps({'workflow_runs':[{'id':7,'head_sha':os.environ['QUALIFIED_SHA'],'conclusion':'success','html_url':'https://example.invalid/run/7','head_repository':{'full_name':'owner/repo'}}]}))
 ''')
             binary.chmod(0o755)
-            env = os.environ | {'PATH': str(root) + ':' + os.environ['PATH'], 'QUALIFIED_SHA': qualified, 'COMPLETE': '1' if complete else '', 'INSTALLED_SHA': installed}
+            env = os.environ | {'PATH': str(root) + ':' + os.environ['PATH'], 'QUALIFIED_SHA': qualified, 'COMPLETE': '1' if complete else '', 'INSTALLED_SHA': installed, 'GITHUB_OUTPUT': str(root / 'outputs')}
             result = subprocess.run(['python3', str(ROOT / 'scripts/qualification.py'), '--repository', 'owner/repo', '--revision', candidate], cwd=repo, env=env, capture_output=True, text=True)
             if succeeds:
                 self.assertEqual(result.returncode, 0, result.stderr)
