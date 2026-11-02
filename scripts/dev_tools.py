@@ -123,6 +123,7 @@ def preview(series):
     print('APT sources: https://packages.sury.org/php/ and git-core/ppa')
     print(f'Global mise configuration: {fragment()} -> {ROOT}')
     print('Shell activation: managed blocks for installed Bash/Zsh shells.')
+    print('Socket Firewall: official npm installer if absent; existing versions preserved.')
     print('Herdr Core: official installer if absent; existing versions preserved. TUI is optional: dev-tools install herdr-tui.')
     print('APT applies changes incrementally; completed package changes are not rolled back.')
 
@@ -243,6 +244,32 @@ def install_optional(args):
     return 0
 
 
+def sfw_version(mise, env):
+    executable = shutil.which('sfw')
+    if not executable:
+        return None
+    result = subprocess.run([str(mise), 'exec', '--', executable, '--version'], cwd=ROOT,
+                            env=env | {'SFW_SKIP_UPDATE_CHECK': '1'}, capture_output=True, text=True, timeout=120)
+    if result.returncode or not re.fullmatch(r'Socket Firewall Free, version \d+\.\d+\.\d+', result.stdout.strip()):
+        raise RuntimeError(f'Socket Firewall command collision or verification failure: {executable}; inspect sfw --version before retrying.')
+    return result.stdout.strip()
+
+
+def install_sfw(mise, env):
+    existing = sfw_version(mise, env)
+    if existing:
+        print(f'{existing}; npm installation skipped.')
+        return
+    launcher = home() / '.local/bin/sfw'
+    if launcher.exists() or launcher.is_symlink():
+        raise RuntimeError(f'Socket Firewall launcher collision: {launcher}')
+    # Installing the firewall itself is the official unwrapped bootstrap step.
+    run([mise, 'exec', '--', 'npm', 'install', '--global', '--prefix', home() / '.local',
+         '--ignore-scripts', '--no-audit', '--no-fund', 'sfw@' + configuration()['vars']['sfw_npm_version']], cwd=ROOT, env=env)
+    if not sfw_version(mise, env):
+        raise RuntimeError('Socket Firewall installer completed but sfw is absent from PATH.')
+
+
 def bootstrap(args):
     series = host()
     preflight()
@@ -270,6 +297,7 @@ def bootstrap(args):
     install_shells(mise, env)
     install_browser_link(mise, env)
     os.environ['PATH'] = str(home() / '.local/bin') + os.pathsep + os.environ.get('PATH', '')
+    install_sfw(mise, env)
     install_herdr('core')
     check(argparse.Namespace(tools_only=True))
     print('Tools ready. Open a new terminal, then run: dev-tools github; dev-tools check. Future updates: dev-tools upgrade.')
@@ -310,6 +338,11 @@ def check(args):
     # Report the actual command paths without reading credentials or environment files.
     run([mise, 'which', 'php'], cwd=ROOT, env=env)
     run([mise, 'which', 'composer'], cwd=ROOT, env=env)
+    firewall = sfw_version(mise, env)
+    if firewall:
+        print(firewall)
+    else:
+        failures.append('Socket Firewall absent: run dev-tools bootstrap')
     core = herdr_binary('core')
     if core:
         print(f'Herdr Core: {core[1]} ({core[0]}); updates: hc update')

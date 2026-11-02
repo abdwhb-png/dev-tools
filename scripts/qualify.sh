@@ -20,11 +20,13 @@ export PATH="$HOME/.local/bin:$PATH"
 export DEV_TOOLS_MISE="$HOME/.local/bin/mise"
 python3 -m unittest discover -s "${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/source/tests" -v
 dev-tools check --tools-only
+SFW_SKIP_UPDATE_CHECK=1 mise exec -- sfw --version > evidence/sfw-version.txt
+SFW_SKIP_UPDATE_CHECK=1 mise exec -- sfw npm --version > evidence/sfw-npm-version.txt
 python3 - <<'STATE' > evidence/before-replay.json
 import json,os
 from pathlib import Path
 home=Path.home()
-paths=[home/p for p in ('.profile','.bashrc','.zshrc','.zshenv','.zprofile','.local/bin/herdr-core','.local/bin/hc','.local/bin/mise','.local/bin/dev-tools','.config/mise/conf.d/dev-tools','.local/share/dev-tools/browser/chrome')]
+paths=[home/p for p in ('.profile','.bashrc','.zshrc','.zshenv','.zprofile','.local/bin/sfw','.local/bin/herdr-core','.local/bin/hc','.local/bin/mise','.local/bin/dev-tools','.config/mise/conf.d/dev-tools','.local/share/dev-tools/browser/chrome')]
 print(json.dumps({str(p):[p.lstat().st_mtime_ns,p.readlink().as_posix() if p.is_symlink() else (__import__('hashlib').sha256(p.read_bytes()).hexdigest() if p.name == 'herdr-core' else p.read_text())] for p in paths if p.exists()},sort_keys=True))
 STATE
 cat .ci-installer | sh -s -- --yes --upgrade | tee evidence/replay.log
@@ -37,7 +39,7 @@ for name, expected in before.items():
     actual=[p.lstat().st_mtime_ns,p.readlink().as_posix() if p.is_symlink() else (__import__('hashlib').sha256(p.read_bytes()).hexdigest() if p.name == 'herdr-core' else p.read_text())]
     assert actual==expected, 'Replay changed '+name
 text=Path('evidence/replay.log').read_text()
-assert not re.search(r'\bDownloading\b|bootstrap packages apply|apt-get',text,re.I), 'Replay repeated an installation operation'
+assert not re.search(r'\bDownloading\b|bootstrap packages apply|apt-get|npm install --global',text,re.I), 'Replay repeated an installation operation'
 print('Replay configuration, links and installation operations verified.')
 STATE
 # Every real command is evaluated through the installed environment.
@@ -48,8 +50,8 @@ export DEV_TOOLS_NODE_VERSION
 export DEV_TOOLS_PHP_VERSION
 DEV_TOOLS_NODE_VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("mise.toml", "rb"))["tools"]["node"])')
 DEV_TOOLS_PHP_VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("mise.toml", "rb"))["tools"]["php"])')
-bash -lic 'set -e; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
-zsh -lic 'set -e; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
+bash -lic 'set -e; SFW_SKIP_UPDATE_CHECK=1 sfw --version; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
+zsh -lic 'set -e; SFW_SKIP_UPDATE_CHECK=1 sfw --version; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
 # A project must override the default and leaving it must restore the default.
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
