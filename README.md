@@ -117,12 +117,49 @@ Herdr is managed outside mise. Use `hc update` for Core and `herdr update` for t
 
 When upgrading an older dev-tools installation, the TUI declaration is removed from the global mise profile. Existing binaries, preferences and sessions are not deleted. Run `dev-tools install herdr-tui` explicitly to install the official standalone command if the old mise shim no longer resolves. No TUI preferences are converted into Core or Windows application settings.
 
-The configuration includes agent-browser 0.41.1 and Chrome for Testing 156.0.8078.80 as locked native downloads. Zsh and browser system libraries come from Ubuntu. No agent CLI, API credentials, browser profile, SSH configuration or running session is copied.
+The configuration includes these locked native downloads:
 
-The reviewed Herdr profile in `config/herdr.toml` reproduces the local terminal theme, Ctrl+B bindings, UI preferences and Zsh login shell. After explicit TUI installation, it is copied to a regular file, preserving existing personal preferences. To explicitly review, back up and replace them, use `dev-tools herdr-config --apply`. Rerunning with identical contents does not create another backup or rewrite the file. Existing Herdr servers are never restarted by bootstrap.
+- agent-browser 0.41.1
+- Chrome for Testing 156.0.8078.80
+
+Zsh and browser system libraries come from Ubuntu. No agent CLI, API credentials, browser profile, SSH configuration or running session is copied.
+
+### Herdr preferences
+
+The reviewed Herdr profile in `config/herdr.toml` reproduces the local terminal theme, Ctrl+B bindings, UI preferences and Zsh login shell. After explicit TUI installation, it is copied to a regular file, preserving existing personal preferences. To explicitly review, back up and replace them:
+
+```sh
+dev-tools herdr-config --apply
+```
+
+Rerunning with identical contents does not create another backup or rewrite the file. Existing Herdr servers are never restarted by bootstrap.
+
+### Updates and repair
 
 Use `dev-tools upgrade` to move a clean managed checkout to the latest stable release; older installations use the one-time pipe command above. It still refuses foreign origins, modified checkouts and unrequested version changes. A same-version upgrade does not fetch Git again; matching APT packages skip sudo/APT, locked tool installs reuse existing installations, and identical Herdr preferences are left alone. No system rollback is promised after a partial failure; rerun the same installer to repair it. The streamed installer preview remains offline; the global upgrade preview only reads release metadata.
 
+### GitHub sign-in
+
 GitHub login now presents the native gh device code in a separate text frame with its URL. Authorization happens on your own computer, without trying to open a browser on the VPS. gh still owns OAuth and credential storage. Already valid authentication is reused.
 
-For browser observation on the VPS, run `agent-browser dashboard start`. From your local computer, run `ssh -N -L 4848:127.0.0.1:4848 USER@VPS` and visit `http://localhost:4848`. The dashboard is loopback-only and starts on demand. Stop it with `agent-browser dashboard stop`. Keep agent work in named sessions; no dashboard AI provider is enabled by this utility.
+### Browser dashboard on a VPS
+
+Start the dashboard on the VPS:
+
+```sh
+agent-browser dashboard start
+```
+
+From your local computer, open an SSH tunnel:
+
+```sh
+ssh -N -L 4848:127.0.0.1:4848 USER@VPS
+```
+
+Visit [http://localhost:4848](http://localhost:4848). The dashboard is loopback-only and starts on demand. Stop it on the VPS when finished:
+
+```sh
+agent-browser dashboard stop
+```
+
+Keep agent work in named sessions; no dashboard AI provider is enabled by this utility.
