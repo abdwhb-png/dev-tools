@@ -64,6 +64,12 @@ PHP is precompiled and includes the required modules in `php-modules.txt`. Exten
 
 `check --tools-only` checks the repository baseline, regardless of the invoking project, and does not require GitHub credentials. The full check also requires GitHub authentication and the HTTPS credential helper. The checker reports failures instead of accepting a different executable merely because mise printed the requested version in a fallback warning.
 
+## Socket Firewall
+
+The default installation includes [Socket Firewall Free](https://docs.socket.dev/docs/socket-firewall-free). Bootstrap uses the official npm installation method with `sfw@2.0.6`, through the managed Node/npm runtime, without sudo or lifecycle scripts. Its launcher is installed in `~/.local/bin` so it remains available across shells and projects. Existing valid installations are preserved and repeated bootstrap skips npm installation. Node 20 or newer is required by the npm wrapper; the repository baseline meets that requirement.
+
+Use `sfw npm install`, `sfw pnpm install`, or another supported package-manager command explicitly. No aliases or project configuration are changed. The official wrapper manages its own Firewall binary downloads and background updates. `dev-tools check` reports the actual Firewall version, which differs from the npm wrapper version. Checks suppress background update checks when a cached binary exists; first use still downloads the official binary. CI records both version output and an npm invocation through the wrapper, not a malware-blocking qualification.
+
 ## Projects and additional PHP versions
 
 Use native mise project declarations. The global fragment enables native version files for Node, npm, pnpm, Bun and Python, including `packageManager` declarations. Trust project configurations explicitly when mise requests it. Automatic installation before tasks is disabled globally so that checks and setup tasks do not install tools implicitly; use an explicit `mise install` when a project needs tools. A project's tools override the global defaults; scripts can use `mise exec -- COMMAND`.

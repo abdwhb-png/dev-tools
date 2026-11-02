@@ -142,6 +142,8 @@ class Commands(unittest.TestCase):
             def external(argv, **kwargs):
                 if str(argv[0]).endswith('/herdr-core'):
                     return subprocess.CompletedProcess(argv, 0, 'hc 0.1.16', '')
+                if any(str(arg).endswith('/sfw') for arg in argv):
+                    return subprocess.CompletedProcess(argv, 0, 'Socket Firewall Free, version 1.16.0', '')
                 if 'chrome' in argv:
                     return subprocess.CompletedProcess(argv, 0, 'Google Chrome for Testing 156.0.8078.80', '')
                 if 'php' in argv and '--version' in argv:

@@ -33,7 +33,7 @@ class Agentic(unittest.TestCase):
             for series in ('noble', 'resolute'):
                 (root / f'mise.{series}.toml').write_text('[bootstrap.packages]\n"apt:git"="1:2.56.0-0ppa1"\n')
             binary = root / 'mise'
-            binary.write_text('#!/bin/sh\ncase "$*" in *"git --version") echo "git version 2.56.0";; *"php -r"*) echo \'["Core"]\';; "which "*) echo /fixture;; *"auth status --hostname github.com --active") exit 1;; *) exit 99;; esac\n')
+            binary.write_text('#!/bin/sh\ncase "$*" in *"sfw --version") echo "Socket Firewall Free, version 1.16.0";; *"git --version") echo "git version 2.56.0";; *"php -r"*) echo \'["Core"]\';; "which "*) echo /fixture;; *"auth status --hostname github.com --active") exit 1;; *) exit 99;; esac\n')
             binary.chmod(0o755)
             output, error = io.StringIO(), io.StringIO()
             with patch.object(app, 'ROOT', root), patch.object(app, 'mise_path', return_value=binary), contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
