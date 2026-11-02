@@ -19,12 +19,12 @@ sh .ci-installer --yes --upgrade
 export PATH="$HOME/.local/bin:$PATH"
 export DEV_TOOLS_MISE="$HOME/.local/bin/mise"
 python3 -m unittest discover -s "${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/source/tests" -v
-python3 scripts/dev_tools.py check --tools-only
+dev-tools check --tools-only
 python3 - <<'STATE' > evidence/before-replay.json
 import json,os
 from pathlib import Path
 home=Path.home()
-paths=[home/p for p in ('.profile','.bashrc','.zshrc','.zshenv','.zprofile','.config/herdr/config.toml','.local/bin/mise','.config/mise/conf.d/dev-tools','.local/share/dev-tools/browser/chrome')]
+paths=[home/p for p in ('.profile','.bashrc','.zshrc','.zshenv','.zprofile','.config/herdr/config.toml','.local/bin/mise','.local/bin/dev-tools','.config/mise/conf.d/dev-tools','.local/share/dev-tools/browser/chrome')]
 print(json.dumps({str(p):[p.lstat().st_mtime_ns,p.readlink().as_posix() if p.is_symlink() else p.read_text()] for p in paths if p.exists()},sort_keys=True))
 STATE
 cat .ci-installer | sh -s -- --yes --upgrade | tee evidence/replay.log
@@ -94,7 +94,7 @@ mise exec -- php -m > evidence/php-modules.txt
 mise which php > evidence/php-path.txt
 mise which composer > evidence/composer-path.txt
 dpkg-query -W 'php*' git > evidence/packages.txt
-python3 scripts/dev_tools.py check --tools-only
+dev-tools check --tools-only
 
 # Agentic runtime: only local fixture content and owned sessions, no agent/provider calls.
 printf '<html><body><button>Fixture button</button></body></html>' > "$fixture/browser.html"

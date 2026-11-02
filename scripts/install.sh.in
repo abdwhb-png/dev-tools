@@ -72,7 +72,7 @@ main() {
         trap - 0 HUP INT TERM
     fi
     sh "$destination/bootstrap.sh" --yes
-    printf '\nInstalled %s (%s). Open a new terminal, then run:\nmise run dev-tools:github\nmise run dev-tools:check\n' "$version" "$revision"
+    printf '\nInstalled %s (%s). Open a new terminal, then run:\ndev-tools github\ndev-tools check\nFuture updates: dev-tools upgrade\n' "$version" "$revision"
 }
 
 # Parse the complete script before allowing child processes to consume input.
