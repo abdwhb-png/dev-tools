@@ -133,7 +133,7 @@ class Commands(unittest.TestCase):
     def test_fallback_warning_does_not_count_as_the_requested_php_version(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / 'mise.toml').write_text('[tools]\nphp="8.5.12"\nchrome="156.0.8078.80"\n')
+            (root / 'mise.toml').write_text('[tools]\nphp="8.5.12"\n')
             (root / 'php-modules.txt').write_text('Core\n')
             for series in ('noble', 'resolute'):
                 (root / f'mise.{series}.toml').write_text('[bootstrap.packages]\n"apt:git"="1:2.56.0-0ppa1~ubuntu24.04.2"\n')
@@ -144,8 +144,8 @@ class Commands(unittest.TestCase):
                     return subprocess.CompletedProcess(argv, 0, 'hc 0.1.16', '')
                 if any(str(arg).endswith('/sfw') for arg in argv):
                     return subprocess.CompletedProcess(argv, 0, 'Socket Firewall Free, version 1.16.0', '')
-                if 'chrome' in argv:
-                    return subprocess.CompletedProcess(argv, 0, 'Google Chrome for Testing 156.0.8078.80', '')
+                if str(argv[0]).endswith('/chrome'):
+                    return subprocess.CompletedProcess(argv, 0, 'Google Chrome 157.0.8103.38', '')
                 if 'php' in argv and '--version' in argv:
                     return subprocess.CompletedProcess(argv, 0, 'PHP 8.5.0', 'mise WARN php@8.5.12 is missing')
                 if 'git' in argv:

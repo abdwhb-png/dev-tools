@@ -12,9 +12,17 @@ if [[ ${1:?platform required} == wsl2 ]]; then
   uname -r | grep -i microsoft-standard-WSL2
 fi
 sh .ci-installer --dry-run
-curl -fsSL https://github.com/abdwhb-png/dev-tools/releases/download/v0.1.0/install.sh -o evidence/v0.1.0-install.sh
-printf '90f2ac14eafadb20760df7cecafa80df9645195dcae832af7d68c2df2ec7e87b  evidence/v0.1.0-install.sh\n' | sha256sum -c -
-sh evidence/v0.1.0-install.sh --yes
+curl -fsSL https://github.com/abdwhb-png/dev-tools/releases/download/v0.3.0/install.sh -o evidence/v0.3.0-install.sh
+printf '777ac6859699f5358e552e7e2739e0e2bcf60f8e21b65c88579d1f2a07888acd  evidence/v0.3.0-install.sh\n' | sha256sum -c -
+sh evidence/v0.3.0-install.sh --yes
+if [[ ${1:?platform required} == ubuntu-native ]]; then
+  if env -u CI "$HOME/.local/bin/mise" -C "$HOME/.local/share/dev-tools/source" exec -- agent-browser --session dev-tools-before-migration open about:blank > evidence/before-migration-browser.log 2>&1; then
+    echo 'Expected the legacy user-installed Chrome to fail under restricted AppArmor.' >&2
+    exit 1
+  fi
+  grep -q 'No usable sandbox' evidence/before-migration-browser.log
+  env -u CI "$HOME/.local/bin/mise" -C "$HOME/.local/share/dev-tools/source" exec -- agent-browser --session dev-tools-before-migration close
+fi
 sh .ci-installer --yes --upgrade
 export PATH="$HOME/.local/bin:$PATH"
 export DEV_TOOLS_MISE="$HOME/.local/bin/mise"
@@ -95,7 +103,7 @@ mise ls --json > evidence/tools.json
 mise exec -- php -m > evidence/php-modules.txt
 mise which php > evidence/php-path.txt
 mise which composer > evidence/composer-path.txt
-dpkg-query -W 'php*' git > evidence/packages.txt
+dpkg-query -W 'php*' git google-chrome-stable > evidence/packages.txt
 dev-tools check --tools-only
 
 # Agentic runtime: only local fixture content and owned sessions, no agent/provider calls.
@@ -123,6 +131,19 @@ HC_SESSION=dev-tools-ci herdr-core ls > evidence/herdr-core-status.txt
 herdr-core --version > evidence/herdr-core-version.txt
 cleanup_agentic
 trap 'rm -rf "$fixture"' EXIT
+if [[ ${1:?platform required} == ubuntu-native ]]; then
+  test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
+  sudo aa-status > evidence/apparmor-status.txt
+  sudo journalctl -k -b --no-pager | grep -E 'apparmor=.*(chrome|userns)' > evidence/apparmor-browser.log || test "$?" = 1
+  sandbox_cursor=$(sudo journalctl -k -n 1 --show-cursor --no-pager | sed -n 's/^-- cursor: //p')
+  test -n "$sandbox_cursor"
+  env -u CI dev-tools check --tools-only --browser-sandbox | tee evidence/browser-sandbox.log
+  sudo journalctl -k --after-cursor "$sandbox_cursor" --no-pager > evidence/apparmor-after-browser.log
+  if grep -E 'apparmor="DENIED".*comm="chrome' evidence/apparmor-after-browser.log; then
+    echo 'New AppArmor refusal associated with Chrome after migration.' >&2
+    exit 1
+  fi
+fi
 # Fresh user configuration, sharing only immutable download caches.
 fresh_home=$(mktemp -d)
 env HOME="$fresh_home" XDG_CONFIG_HOME="$fresh_home/.config" XDG_DATA_HOME="$fresh_home/.local/share" XDG_CACHE_HOME="$HOME/.cache" sh .ci-installer --yes

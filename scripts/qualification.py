@@ -15,7 +15,7 @@ CONTROL_FILES = {b'.github/workflows/release.yml', b'.github/workflows/qualifica
                  b'scripts/release_version.py', b'tests/test_release_version.py',
                  b'scripts/qualification.py', b'tests/test_qualification.py'}
 
-REQUIRED_JOBS = {'build', 'isolated', 'ubuntu (24.04)', 'ubuntu (26.04)', 'wsl2 (24.04)', 'wsl2 (26.04)'}
+REQUIRED_JOBS = {'build', 'isolated', 'ubuntu (24.04, AppArmor)', 'ubuntu (26.04)', 'wsl2 (24.04)', 'wsl2 (26.04)'}
 
 
 def fingerprint(revision):
