@@ -170,12 +170,14 @@ def check_browser_sandbox(mise, env):
         raise RuntimeError('Unset CI for this check: agent-browser automatically disables the sandbox when CI is present.')
     prefix = [mise, 'exec', '--', 'agent-browser', '--session', 'dev-tools-sandbox-' + uuid.uuid4().hex]
     evidence = {}
+    opened = False
     try:
         for key, url, expression in (
             ('command_line', 'chrome://version', "document.getElementById('command_line').textContent"),
             ('sandbox', 'chrome://sandbox', 'document.body.innerText'),
         ):
             run(prefix + ['open', url], cwd=ROOT, env=env, timeout=60)
+            opened = True
             if key == 'sandbox':
                 run(prefix + ['wait', '--text', 'sandboxed.'], cwd=ROOT, env=env, timeout=60)
             result = run(prefix + ['eval', expression, '--json'], cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
@@ -191,7 +193,8 @@ def check_browser_sandbox(mise, env):
             raise RuntimeError('Chrome does not report an adequate sandbox with seccomp-BPF enabled.')
         print('Chrome sandbox verified; no sandbox-disabling launch flags.')
     finally:
-        run(prefix + ['close'], cwd=ROOT, env=env, timeout=60)
+        if opened:
+            run(prefix + ['close'], cwd=ROOT, env=env, timeout=60)
 
 
 def install_shells(mise, env):

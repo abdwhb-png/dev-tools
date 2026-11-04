@@ -63,3 +63,11 @@ class Chrome(unittest.TestCase):
     def test_negative_sandbox_status_is_not_accepted(self):
         with self.assertRaisesRegex(RuntimeError, 'adequate sandbox'):
             self.sandbox_probe('/opt/google/chrome/chrome --headless', 'Seccomp-BPF sandbox\tNo\nYou are NOT adequately sandboxed.')
+
+    def test_failed_browser_launch_is_not_retried_during_cleanup(self):
+        import os
+        env = {k: v for k, v in os.environ.items() if k != 'CI'}
+        with patch.dict(os.environ, env, clear=True), patch('subprocess.run', side_effect=subprocess.CalledProcessError(1, ['open'])) as command:
+            with self.assertRaises(subprocess.CalledProcessError):
+                app.check_browser_sandbox(Path('/mise'), app.isolated_env())
+        self.assertEqual(command.call_count, 1)

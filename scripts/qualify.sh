@@ -16,12 +16,13 @@ curl -fsSL https://github.com/abdwhb-png/dev-tools/releases/download/v0.3.0/inst
 printf '777ac6859699f5358e552e7e2739e0e2bcf60f8e21b65c88579d1f2a07888acd  evidence/v0.3.0-install.sh\n' | sha256sum -c -
 sh evidence/v0.3.0-install.sh --yes
 if [[ ${1:?platform required} == ubuntu-native ]]; then
-  if env -u CI "$HOME/.local/bin/mise" -C "$HOME/.local/share/dev-tools/source" exec -- agent-browser --session dev-tools-before-migration open about:blank > evidence/before-migration-browser.log 2>&1; then
+  legacy_profile=$(mktemp -d)
+  if timeout 30 "$HOME/.local/share/dev-tools/browser/chrome" --headless --user-data-dir="$legacy_profile" --dump-dom about:blank > evidence/before-migration-browser.log 2>&1; then
     echo 'Expected the legacy user-installed Chrome to fail under restricted AppArmor.' >&2
     exit 1
   fi
   grep -q 'No usable sandbox' evidence/before-migration-browser.log
-  env -u CI "$HOME/.local/bin/mise" -C "$HOME/.local/share/dev-tools/source" exec -- agent-browser --session dev-tools-before-migration close
+  rm -rf "$legacy_profile"
 fi
 sh .ci-installer --yes --upgrade
 export PATH="$HOME/.local/bin:$PATH"
