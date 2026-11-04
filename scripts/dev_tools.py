@@ -296,8 +296,10 @@ def sfw_version(mise, env):
         return None
     result = subprocess.run([str(mise), 'exec', '--', executable, '--version'], cwd=ROOT,
                             env=env | {'SFW_SKIP_UPDATE_CHECK': '1'}, capture_output=True, text=True, timeout=120)
-    if result.returncode or not re.fullmatch(r'Socket Firewall Free, version \d+\.\d+\.\d+', result.stdout.strip()):
-        raise RuntimeError(f'Socket Firewall command collision or verification failure: {executable}; inspect sfw --version before retrying.')
+    if result.returncode:
+        raise RuntimeError(f'Socket Firewall verification failed at {executable} (exit {result.returncode}):\n{result.stdout}{result.stderr}')
+    if not re.fullmatch(r'Socket Firewall Free, version \d+\.\d+\.\d+', result.stdout.strip()):
+        raise RuntimeError(f'Socket Firewall command collision or unexpected version output at {executable}:\n{result.stdout}{result.stderr}')
     return result.stdout.strip()
 
 
