@@ -62,11 +62,6 @@ url = "https://github.com/vercel-labs/agent-browser/releases/download/v{{ versio
 bin = "agent-browser"
 checksum = "sha256:2a89295b62ddd497986a9a80b52e1dbe4c1f6bd68ffde67eaae82eec2206af61"
 
-[tools."http:chrome"]
-version = "156.0.8078.80"
-url = "https://storage.googleapis.com/chrome-for-testing-public/{{ version }}/linux64/chrome-linux64.zip"
-bin_path = "chrome-linux64"
-
 [env]
 AGENT_BROWSER_EXECUTABLE_PATH = "{{ env.XDG_DATA_HOME | default(value=env.HOME ~ '/.local/share') }}/dev-tools/browser/chrome"
 

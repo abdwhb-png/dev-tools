@@ -17,9 +17,11 @@ import tarfile
 import tempfile
 import tomllib
 import urllib.request
+import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 OS_RELEASE = Path('/etc/os-release')
+CHROME = Path('/opt/google/chrome/chrome')
 
 
 def configuration():
@@ -120,6 +122,7 @@ def preview(series):
         print(f'{name}: {value}')
     for command in tool_versions():
         print(f'Existing path {command}: {shutil.which(command) or "not found"}')
+    print('Chrome stable: official Google Debian package if absent; updates managed by Google’s APT repository.')
     print('APT sources: https://packages.sury.org/php/ and git-core/ppa')
     print(f'Global mise configuration: {fragment()} -> {ROOT}')
     print('Shell activation: managed blocks for installed Bash/Zsh shells.')
@@ -149,6 +152,49 @@ def link_php(mise, version, env):
         target.symlink_to(executable)
     # Linking a system runtime must not regenerate the reviewed download lockfile.
     run([mise, 'link', f'php@{version}', prefix], env=env | {'MISE_LOCKFILE': '0'}, cwd=ROOT)
+
+
+def install_chrome():
+    status = subprocess.run(['dpkg-query', '-W', '-f=${Status}', 'google-chrome-stable'], capture_output=True, text=True)
+    if status.returncode == 0 and status.stdout.strip() == 'install ok installed':
+        print('Google Chrome stable already installed; download and APT skipped. Updates are managed by APT.')
+        return
+    with tempfile.TemporaryDirectory(prefix='dev-tools-chrome-') as directory:
+        package = Path(directory) / 'google-chrome-stable.deb'
+        run(['curl', '-fsSL', '--output', package, 'https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb'])
+        run(['sudo', 'apt-get', 'install', '--yes', '--no-install-recommends', package])
+
+
+def check_browser_sandbox(mise, env):
+    if 'CI' in env:
+        raise RuntimeError('Unset CI for this check: agent-browser automatically disables the sandbox when CI is present.')
+    prefix = [mise, 'exec', '--', 'agent-browser', '--session', 'dev-tools-sandbox-' + uuid.uuid4().hex]
+    evidence = {}
+    opened = False
+    try:
+        for key, url, expression in (
+            ('command_line', 'chrome://version', "document.getElementById('command_line').textContent"),
+            ('sandbox', 'chrome://sandbox', 'document.body.innerText'),
+        ):
+            run(prefix + ['open', url], cwd=ROOT, env=env, timeout=60)
+            opened = True
+            if key == 'sandbox':
+                run(prefix + ['wait', '--text', 'sandboxed.'], cwd=ROOT, env=env, timeout=60)
+            result = run(prefix + ['eval', expression, '--json'], cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
+            payload = json.loads(result.stdout)
+            if not payload.get('success') or not isinstance(payload.get('data', {}).get('result'), str):
+                raise RuntimeError('Unable to read Chrome sandbox evidence: ' + result.stdout)
+            evidence[key] = payload['data']['result']
+        print(json.dumps(evidence, indent=2))
+        disabled = ('--no-sandbox', '--disable-setuid-sandbox', '--disable-namespace-sandbox', '--single-process', '--no-zygote')
+        if any(flag in evidence['command_line'] for flag in disabled):
+            raise RuntimeError('Chrome was launched with sandbox-disabling arguments.')
+        if 'You are adequately sandboxed.' not in evidence['sandbox'] or not re.search(r'Seccomp-BPF sandbox\s+Yes', evidence['sandbox']):
+            raise RuntimeError('Chrome does not report an adequate sandbox with seccomp-BPF enabled.')
+        print('Chrome sandbox verified; no sandbox-disabling launch flags.')
+    finally:
+        if opened:
+            run(prefix + ['close'], cwd=ROOT, env=env, timeout=60)
 
 
 def install_shells(mise, env):
@@ -250,8 +296,10 @@ def sfw_version(mise, env):
         return None
     result = subprocess.run([str(mise), 'exec', '--', executable, '--version'], cwd=ROOT,
                             env=env | {'SFW_SKIP_UPDATE_CHECK': '1'}, capture_output=True, text=True, timeout=120)
-    if result.returncode or not re.fullmatch(r'Socket Firewall Free, version \d+\.\d+\.\d+', result.stdout.strip()):
-        raise RuntimeError(f'Socket Firewall command collision or verification failure: {executable}; inspect sfw --version before retrying.')
+    if result.returncode:
+        raise RuntimeError(f'Socket Firewall verification failed at {executable} (exit {result.returncode}):\n{result.stdout}{result.stderr}')
+    if not re.fullmatch(r'Socket Firewall Free, version \d+\.\d+\.\d+', result.stdout.strip()):
+        raise RuntimeError(f'Socket Firewall command collision or unexpected version output at {executable}:\n{result.stdout}{result.stderr}')
     return result.stdout.strip()
 
 
@@ -295,6 +343,7 @@ def bootstrap(args):
         target.symlink_to(ROOT, target_is_directory=True)
     publish_launchers(mise)
     install_shells(mise, env)
+    install_chrome()
     install_browser_link(mise, env)
     os.environ['PATH'] = str(home() / '.local/bin') + os.pathsep + os.environ.get('PATH', '')
     install_sfw(mise, env)
@@ -348,6 +397,12 @@ def check(args):
         print(f'Herdr Core: {core[1]} ({core[0]}); updates: hc update')
     else:
         failures.append('Herdr Core absent: run dev-tools bootstrap')
+    chrome = subprocess.run([str(CHROME), '--version'], capture_output=True, text=True, check=True)
+    if not re.fullmatch(r'Google Chrome \d+\.\d+\.\d+\.\d+', chrome.stdout.strip()):
+        failures.append('Unexpected Google Chrome executable: ' + chrome.stdout.strip())
+    print(chrome.stdout.strip() + ' (official package; updates managed by APT)')
+    if getattr(args, 'browser_sandbox', False):
+        check_browser_sandbox(mise, env)
     if not args.tools_only:
         status = subprocess.run([str(mise), 'exec', '--', 'gh', 'auth', 'status', '--hostname', 'github.com', '--active'], cwd=ROOT, env=env, capture_output=True)
         if status.returncode:
@@ -408,7 +463,9 @@ def login_github(prefix, env):
 
 
 def install_browser_link(mise, env):
-    source = Path(subprocess.check_output([str(mise), 'which', 'chrome'], cwd=ROOT, env=env, text=True).strip())
+    source = CHROME
+    if not source.is_file():
+        raise RuntimeError('Official Google Chrome executable is absent; run dev-tools bootstrap.')
     target = Path(os.environ.get('XDG_DATA_HOME', home() / '.local/share')) / 'dev-tools/browser/chrome'
     if target.is_symlink() and target.resolve() == source.resolve():
         return
@@ -519,6 +576,7 @@ def main(argv=None):
     boot.add_argument('--yes', action='store_true')
     verify = commands.add_parser('check')
     verify.add_argument('--tools-only', action='store_true')
+    verify.add_argument('--browser-sandbox', action='store_true', help='Launch an isolated browser and verify its real sandbox; CI must be unset.')
     commands.add_parser('github')
     update = commands.add_parser('upgrade')
     update.add_argument('--yes', action='store_true')

@@ -37,3 +37,8 @@ class SocketFirewall(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 app.install_sfw(Path('/mise'), app.isolated_env())
         self.assertEqual(command.call_count, 1)
+
+    def test_failed_verification_preserves_vendor_error(self):
+        with patch('shutil.which', return_value='/sfw'), patch('subprocess.run', return_value=subprocess.CompletedProcess([], 1, '', 'vendor download refused')):
+            with self.assertRaisesRegex(RuntimeError, 'vendor download refused'):
+                app.sfw_version(Path('/mise'), app.isolated_env())

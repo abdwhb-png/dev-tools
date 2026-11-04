@@ -41,7 +41,7 @@ You can also use a reviewed checkout directly with `sh bootstrap.sh`. Git, syste
 
 The preview performs no network requests and writes no files. It describes intended packages and configuration, not a complete APT dependency simulation. `--yes` explicitly accepts the same changes without a prompt. Keep the checkout at its installed location: the global fragment links to it as the authoritative source. Moving it requires explicitly updating that link.
 
-The bootstrap downloads the pinned mise executable, verifies its SHA-256, installs declared signed APT packages, registers the native PHP executable with mise, installs locked tools, and enables Bash/Zsh activation using mise's managed file edits. Existing shell content and Ubuntu's `.profile` remain intact. Custom `ZDOTDIR` requires manual activation; automatic edits are refused.
+The bootstrap downloads the pinned mise executable, verifies its SHA-256, installs declared signed APT packages and the official Google Chrome stable Debian package, registers the native PHP executable with mise, installs locked tools, and enables Bash/Zsh activation using mise's managed file edits. Existing shell content and Ubuntu's `.profile` remain intact. Custom `ZDOTDIR` requires manual activation; automatic edits are refused.
 
 After opening a new terminal:
 
@@ -101,7 +101,7 @@ bash -n bootstrap.sh scripts/qualify.sh
 
 Tests import the production command module. Native mise characterization tests additionally run when `DEV_TOOLS_MISE` names a verified executable; they operate only on temporary fixtures. No package install or GitHub login runs in the local test suite.
 
-The workflow runs on pull requests or explicit manual dispatch, without an automatic repeat on main pushes. Superseded runs of the same PR are canceled. It qualifies fresh Ubuntu 24.04/26.04 containers and actual WSL2 24.04/26.04 distributions, repeated installation, Bash/Zsh startup, PHP functionality, compilation, project overrides, and GitHub HTTPS access. Its real-install script refuses ordinary workstation execution. CI uses GitHub's temporary repository token with read-only contents permission to configure gh's native helper and exercise Git’s credential protocol without exposing credentials. An independent anonymous clone verifies public access. Personal browser/device login and credential storage still require per-machine qualification. Provider calls are not part of qualification. Preserve logs, actual paths and package inventories as evidence. A failed or unrun job is not qualification. Markdown-only changes skip the installation matrix; runtime, test and workflow changes rerun it.
+The workflow runs on pull requests or explicit manual dispatch, without an automatic repeat on main pushes. Superseded runs of the same PR are canceled. It qualifies native Ubuntu 24.04, an Ubuntu 26.04 container and actual WSL2 24.04/26.04 distributions, repeated installation, Bash/Zsh startup, PHP functionality, compilation, project overrides, and GitHub HTTPS access. Its real-install script refuses ordinary workstation execution. CI uses GitHub's temporary repository token with read-only contents permission to configure gh's native helper and exercise Git’s credential protocol without exposing credentials. An independent anonymous clone verifies public access. Personal browser/device login and credential storage still require per-machine qualification. Provider calls are not part of qualification. Preserve logs, actual paths and package inventories as evidence. A failed or unrun job is not qualification. Markdown-only changes skip the installation matrix; runtime, test and workflow changes rerun it.
 
 For updates, query live official vendor release APIs, npm registry metadata/engines, PHP advisories and repository package indexes. Choose stable releases, inspect applicable security advisories, update the native declarations, regenerate the lockfile with `mise lock` for the download-managed tools, and rerun qualification. Do not install unpinned `latest` tools during ordinary preparation. Use Socket Firewall for supported networked application dependency commands; this repository itself has no such dependency install.
 
@@ -126,9 +126,24 @@ When upgrading an older dev-tools installation, the TUI declaration is removed f
 The configuration includes these locked native downloads:
 
 - agent-browser 0.41.1
-- Chrome for Testing 156.0.8078.80
 
 Zsh and browser system libraries come from Ubuntu. No agent CLI, API credentials, browser profile, SSH configuration or running session is copied.
+
+### Chrome and the Linux sandbox
+
+Google Chrome stable is installed through the official Debian package, which configures Google's signing key and APT repository for subsequent updates. Its executable remains at `/opt/google/chrome/chrome`, the standard path covered by Ubuntu's Chrome AppArmor integration. Existing installed packages are preserved; use normal APT maintenance to update Chrome. `dev-tools check` reports its real version rather than requiring a mise pin.
+
+Bootstrap retargets the existing managed browser link to that official executable. Older Chrome for Testing downloads are retained but no longer selected; personal browser links are never overwritten. No global AppArmor/sysctl exception or sandbox-disabling browser flag is configured.
+
+To check the actual sandbox on a native Ubuntu host as a regular user:
+
+```sh
+env -u CI dev-tools check --tools-only --browser-sandbox
+```
+
+This launches and closes a uniquely named diagnostic browser session, reads its real command line and `chrome://sandbox`, and fails on sandbox-disabling flags or missing sandbox/seccomp-BPF protection. The installed agent-browser version automatically adds `--no-sandbox` when `CI` exists or it detects a container; this diagnostic deliberately rejects that outcome. It is separate from the ordinary version check.
+
+CI qualifies migration from v0.3.0 on native Ubuntu 24.04 with AppArmor user-namespace restrictions enabled: the legacy browser must first reproduce the sandbox failure, then the official Chrome must pass the sandbox diagnostic. Ubuntu 26.04 containers and WSL2 still provide installation/runtime evidence only; their browser launch does not prove a native-host sandbox. These checks do not substitute for validation on the actual VPS. See [Chromium's AppArmor documentation](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md).
 
 ### Herdr preferences
 

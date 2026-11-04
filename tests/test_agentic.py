@@ -32,11 +32,14 @@ class Agentic(unittest.TestCase):
             (root / 'php-modules.txt').write_text('Core\n')
             for series in ('noble', 'resolute'):
                 (root / f'mise.{series}.toml').write_text('[bootstrap.packages]\n"apt:git"="1:2.56.0-0ppa1"\n')
+            chrome = root / 'chrome'
+            chrome.write_text('#!/bin/sh\necho "Google Chrome 157.0.8103.38"\n')
+            chrome.chmod(0o755)
             binary = root / 'mise'
             binary.write_text('#!/bin/sh\ncase "$*" in *"sfw --version") echo "Socket Firewall Free, version 1.16.0";; *"git --version") echo "git version 2.56.0";; *"php -r"*) echo \'["Core"]\';; "which "*) echo /fixture;; *"auth status --hostname github.com --active") exit 1;; *) exit 99;; esac\n')
             binary.chmod(0o755)
             output, error = io.StringIO(), io.StringIO()
-            with patch.object(app, 'ROOT', root), patch.object(app, 'mise_path', return_value=binary), contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
+            with patch.object(app, 'CHROME', chrome), patch.object(app, 'ROOT', root), patch.object(app, 'mise_path', return_value=binary), contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
                 code = app.main(['check'])
             self.assertEqual(code, 1)
             self.assertIn('GitHub authentication: run dev-tools github', error.getvalue())
@@ -51,14 +54,14 @@ class Agentic(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             data = Path(directory) / 'data'
             old = data / 'mise/installs/http-chrome/155/chrome'
-            new = data / 'mise/installs/http-chrome/156/chrome'
+            new = data / 'system/google/chrome/chrome'
             for binary in (old, new):
                 binary.parent.mkdir(parents=True)
                 binary.touch()
             target = data / 'dev-tools/browser/chrome'
             target.parent.mkdir(parents=True)
             target.symlink_to(old)
-            with patch.dict(os.environ, {'XDG_DATA_HOME': str(data), 'MISE_DATA_DIR': directory + '/unrelated'}), patch('subprocess.check_output', return_value=str(new)):
+            with patch.dict(os.environ, {'XDG_DATA_HOME': str(data), 'MISE_DATA_DIR': directory + '/unrelated'}), patch.object(app, 'CHROME', new, create=True), patch('subprocess.check_output', return_value=str(old)):
                 app.install_browser_link(Path('/mise'), app.isolated_env())
             self.assertEqual(target.resolve(), new)
 
@@ -67,10 +70,12 @@ class Agentic(unittest.TestCase):
             data = Path(directory)
             personal = data / 'personal-chrome'
             personal.touch()
+            chrome = data / 'official-chrome'
+            chrome.touch()
             target = data / 'dev-tools/browser/chrome'
             target.parent.mkdir(parents=True)
             target.symlink_to(personal)
-            with patch.dict(os.environ, {'XDG_DATA_HOME': str(data)}), patch('subprocess.check_output', return_value=str(data / 'mise/installs/http-chrome/156/chrome')):
+            with patch.object(app, 'CHROME', chrome), patch.dict(os.environ, {'XDG_DATA_HOME': str(data)}), patch('subprocess.check_output', return_value=str(data / 'mise/installs/http-chrome/156/chrome')):
                 with self.assertRaisesRegex(RuntimeError, 'collision'):
                     app.install_browser_link(Path('/mise'), app.isolated_env())
             self.assertEqual(target.resolve(), personal)

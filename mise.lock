@@ -52,15 +52,6 @@ specifiers = ["0.41.1"]
 checksum = "sha256:2a89295b62ddd497986a9a80b52e1dbe4c1f6bd68ffde67eaae82eec2206af61"
 url = "https://github.com/vercel-labs/agent-browser/releases/download/v0.41.1/agent-browser-linux-x64"
 
-[[tools."http:chrome"]]
-version = "156.0.8078.80"
-backend = "http:chrome"
-specifiers = ["156.0.8078.80"]
-
-[tools."http:chrome"."platforms.linux-x64"]
-checksum = "sha256:b711c720f774be355197f32edf37e0651418ba036d92446ee2da19ac017540a7"
-url = "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.80/linux64/chrome-linux64.zip"
-
 [[tools."http:composer"]]
 version = "2.11.1"
 backend = "http:composer"

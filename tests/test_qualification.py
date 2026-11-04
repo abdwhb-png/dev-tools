@@ -24,7 +24,10 @@ class Qualification(unittest.TestCase):
     def test_release_workflow_change_reuses_runtime_evidence(self):
         self.check_reuse(documentation=False, complete=True, succeeds=True, control=True)
 
-    def check_reuse(self, documentation, complete, succeeds, source_matches=True, control=False):
+    def test_matrix_without_native_apparmor_job_is_not_reused(self):
+        self.check_reuse(documentation=True, complete=True, succeeds=False, legacy_native=True)
+
+    def check_reuse(self, documentation, complete, succeeds, source_matches=True, control=False, legacy_native=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             repo = root / 'repo'
@@ -60,13 +63,14 @@ if sys.argv[1:3] == ['run', 'download']:
     sys.exit(0)
 if '/jobs' in sys.argv[-1]:
     names = ['build', 'isolated', 'ubuntu (24.04)', 'ubuntu (26.04)', 'wsl2 (24.04)', 'wsl2 (26.04)']
+    if not os.environ.get('LEGACY_NATIVE'): names[names.index('ubuntu (24.04)')] = 'ubuntu (24.04, AppArmor)'
     if not os.environ.get('COMPLETE'): names.pop()
     print(json.dumps({'jobs':[{'name':n,'conclusion':'success'} for n in names]}))
 else:
     print(json.dumps({'workflow_runs':[{'id':7,'head_sha':os.environ['QUALIFIED_SHA'],'conclusion':'success','html_url':'https://example.invalid/run/7','head_repository':{'full_name':'owner/repo'}}]}))
 ''')
             binary.chmod(0o755)
-            env = os.environ | {'PATH': str(root) + ':' + os.environ['PATH'], 'QUALIFIED_SHA': qualified, 'COMPLETE': '1' if complete else '', 'INSTALLED_SHA': installed, 'GITHUB_OUTPUT': str(root / 'outputs')}
+            env = os.environ | {'PATH': str(root) + ':' + os.environ['PATH'], 'QUALIFIED_SHA': qualified, 'LEGACY_NATIVE': '1' if legacy_native else '', 'COMPLETE': '1' if complete else '', 'INSTALLED_SHA': installed, 'GITHUB_OUTPUT': str(root / 'outputs')}
             result = subprocess.run(['python3', str(ROOT / 'scripts/qualification.py'), '--repository', 'owner/repo', '--revision', candidate], cwd=repo, env=env, capture_output=True, text=True)
             if succeeds:
                 self.assertEqual(result.returncode, 0, result.stderr)

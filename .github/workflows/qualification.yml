@@ -68,14 +68,51 @@ jobs:
       - run: python3 -m unittest discover -s tests -v
       - run: sh -n bootstrap.sh scripts/install.sh.in
       - run: bash -n scripts/qualify.sh
+  ubuntu_native:
+    name: ubuntu (24.04, AppArmor)
+    needs: [build, isolated]
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-candidate
+      - name: Prepare native Ubuntu with restricted AppArmor
+        run: |
+          set -euo pipefail
+          test ! -e /.dockerenv
+          sudo systemctl start apparmor
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+          sudo aa-status
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl python3 sudo zsh
+          sudo useradd -m -s /bin/bash qualifier
+          echo 'qualifier ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/qualifier >/dev/null
+          sudo chmod 440 /etc/sudoers.d/qualifier
+          sudo cp -a . /home/qualifier/source
+          sudo chown -R qualifier:qualifier /home/qualifier/source
+          sudo apt-get remove -y git git-man
+      - name: Qualify migration and actual browser sandbox
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sudo -H -u qualifier --preserve-env=GH_TOKEN,GITHUB_REPOSITORY env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME -u XDG_STATE_HOME -u XDG_RUNTIME_DIR GITHUB_ACTIONS=true CI=true bash -c 'cd /home/qualifier/source && bash scripts/qualify.sh ubuntu-native'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ubuntu-24.04-evidence
+          path: /home/qualifier/source/evidence/
   ubuntu:
-    needs: build
+    needs: [build, ubuntu_native]
     timeout-minutes: 30
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        release: ['24.04', '26.04']
+        release: ['26.04']
     container: ubuntu:${{ matrix.release }}
     steps:
       - name: Prepare disposable operator
@@ -107,7 +144,7 @@ jobs:
           name: ubuntu-${{ matrix.release }}-evidence
           path: /home/qualifier/source/evidence/
   wsl2:
-    needs: build
+    needs: [build, ubuntu_native]
     timeout-minutes: 30
     runs-on: windows-2025
     strategy:
@@ -140,6 +177,30 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'WSL source copy failed' }
           wsl -d Ubuntu-${{ matrix.release }} -u qualifier --exec bash -lc 'cd /home/qualifier/source && env GITHUB_ACTIONS=true CI=true bash scripts/qualify.sh wsl2'
           if ($LASTEXITCODE -ne 0) { throw 'WSL qualification failed' }
+      - name: Diagnose Socket release access after a WSL failure
+        if: failure()
+        shell: pwsh
+        run: |
+          $probe = @'
+          cd /home/qualifier/source
+          "$HOME/.local/bin/mise" -C "$HOME/.local/share/dev-tools/source" exec -- node --input-type=module <<'NODE' > evidence/sfw-network.txt 2>&1
+          import https from 'node:https';
+          console.log('Node', process.version);
+          const request = https.get('https://api.github.com/repos/SocketDev/sfw-free/releases/latest', {headers: {'User-Agent': 'sfw-free/2.0.6'}}, response => {
+            console.log('HTTP', response.statusCode, 'rate remaining', response.headers['x-ratelimit-remaining'], 'reset', response.headers['x-ratelimit-reset']);
+            let body = '';
+            response.on('data', chunk => body += chunk);
+            response.on('end', () => {
+              try { const data = JSON.parse(body); console.log(data.message ?? data.tag_name); }
+              catch { console.log('Non-JSON response'); }
+            });
+          });
+          request.setTimeout(30000, () => request.destroy(new Error('Socket API diagnostic timed out')));
+          request.on('error', error => { console.error(error); process.exitCode = 1; });
+          NODE
+          cat evidence/sfw-network.txt
+          '@
+          $probe | wsl -d Ubuntu-${{ matrix.release }} -u qualifier --exec bash
       - name: Collect evidence
         if: always()
         shell: pwsh
