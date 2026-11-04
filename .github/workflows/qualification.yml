@@ -70,7 +70,7 @@ jobs:
       - run: bash -n scripts/qualify.sh
   ubuntu_native:
     name: ubuntu (24.04, AppArmor)
-    needs: build
+    needs: [build, isolated]
     timeout-minutes: 30
     runs-on: ubuntu-24.04
     steps:
@@ -99,14 +99,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          sudo -H -u qualifier --preserve-env=GH_TOKEN,GITHUB_REPOSITORY env GITHUB_ACTIONS=true CI=true bash -c 'cd /home/qualifier/source && bash scripts/qualify.sh ubuntu-native'
+          sudo -H -u qualifier --preserve-env=GH_TOKEN,GITHUB_REPOSITORY env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME -u XDG_STATE_HOME -u XDG_RUNTIME_DIR GITHUB_ACTIONS=true CI=true bash -c 'cd /home/qualifier/source && bash scripts/qualify.sh ubuntu-native'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ubuntu-24.04-evidence
           path: /home/qualifier/source/evidence/
   ubuntu:
-    needs: build
+    needs: [build, ubuntu_native]
     timeout-minutes: 30
     runs-on: ubuntu-24.04
     strategy:
@@ -144,7 +144,7 @@ jobs:
           name: ubuntu-${{ matrix.release }}-evidence
           path: /home/qualifier/source/evidence/
   wsl2:
-    needs: build
+    needs: [build, ubuntu_native]
     timeout-minutes: 30
     runs-on: windows-2025
     strategy:
