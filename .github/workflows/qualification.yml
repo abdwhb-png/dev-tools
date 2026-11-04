@@ -94,7 +94,7 @@ jobs:
           sudo chmod 440 /etc/sudoers.d/qualifier
           sudo cp -a . /home/qualifier/source
           sudo chown -R qualifier:qualifier /home/qualifier/source
-          sudo apt-get remove -y git
+          sudo apt-get remove -y git git-man
       - name: Qualify migration and actual browser sandbox
         env:
           GH_TOKEN: ${{ github.token }}
