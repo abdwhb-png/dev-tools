@@ -184,3 +184,20 @@ agent-browser dashboard stop
 ```
 
 Keep agent work in named sessions; no dashboard AI provider is enabled by this utility.
+
+### Zsh appearance and completion
+
+New installations configure Oh My Zsh with Powerlevel10k, the supplied personal prompt settings, fzf completion, autosuggestions and syntax highlighting. The profile includes the Git, Docker, Laravel, npm, Python, Bun and zoxide plugins; these plugins do not install Docker or Laravel. Ubuntu supplies fzf and zoxide through APT. Shell components use official Git repositories at the revisions in `config/zsh/components.json`; their updates go through `dev-tools upgrade` rather than background Oh My Zsh updates.
+
+The bootstrap selects `/usr/bin/zsh` as your login shell after tool verification. Reconnect to start using it. Bash remains available. A failure to change the login shell is reported as an installation failure and can be retried.
+
+Existing personal Zsh configuration is preserved. Inspect the profile status and explicitly adopt it with:
+
+```sh
+dev-tools zsh-config
+dev-tools zsh-config --apply
+```
+
+Adoption requires an interactive confirmation. The affected files are backed up under `${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/zsh/backup-<timestamp>` before replacement. To restore your previous shell configuration, copy the backup's `.zshrc` to `~/.zshrc` and open a new terminal. Modified managed prompt files are also preserved during upgrades and included in adoption backups. Configuration contents are never printed. Custom `ZDOTDIR` remains unsupported for automatic setup.
+
+This profile excludes personal aliases, project functions, credentials, Pi integration and workstation-specific environment settings. It uses a separate managed Oh My Zsh installation, leaving `~/.oh-my-zsh` untouched. Configure a Nerd Font in your local terminal for the prompt icons; installing fonts on a headless VPS does not change SSH rendering.
