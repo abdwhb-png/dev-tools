@@ -9,8 +9,10 @@ import json
 import os
 from pathlib import Path
 import platform
+import pwd
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 import tarfile
@@ -125,6 +127,7 @@ def preview(series):
     print('Chrome stable: official Google Debian package if absent; updates managed by Google’s APT repository.')
     print('APT sources: https://packages.sury.org/php/ and git-core/ppa')
     print(f'Global mise configuration: {fragment()} -> {ROOT}')
+    print('Zsh: portable appearance/completion profile; preserve personal configuration; select Zsh as login shell.')
     print('Shell activation: managed blocks for installed Bash/Zsh shells.')
     print('Socket Firewall: official npm installer if absent; existing versions preserved.')
     print('Herdr Core: official installer if absent; existing versions preserved. TUI is optional: dev-tools install herdr-tui.')
@@ -218,6 +221,120 @@ def install_shells(mise, env):
         shell_env = env | {'MISE_CEILING_PATHS': str(path.parent), 'MISE_TRUSTED_CONFIG_PATHS': str(path)}
         # Startup blocks invoke mise by name, so publish its dedicated launcher first.
         run([mise, 'bootstrap', '--only', 'dotfiles,mise-shell-activate', '--yes'], cwd=path, env=shell_env)
+
+
+def zsh_directory():
+    return Path(os.environ.get('XDG_DATA_HOME', home() / '.local/share')) / 'dev-tools/zsh'
+
+
+def install_zsh_components():
+    directory = zsh_directory()
+    components = json.loads((ROOT / 'config/zsh/components.json').read_text())
+    for name, component in components.items():
+        target = directory / ('oh-my-zsh' if name == 'oh-my-zsh' else 'custom/' + ('themes/' if name == 'powerlevel10k' else 'plugins/') + name)
+        if target.is_symlink():
+            raise RuntimeError(f'Zsh component collision: {target}')
+        if target.exists():
+            remote = subprocess.check_output(['git', '-C', str(target), 'remote', 'get-url', 'origin'], text=True).strip()
+            dirty = subprocess.check_output(['git', '-C', str(target), 'status', '--porcelain'], text=True).strip()
+            if remote != component['url'] or dirty:
+                raise RuntimeError(f'Personal Zsh component preserved: {target}')
+            current = subprocess.check_output(['git', '-C', str(target), 'rev-parse', 'HEAD'], text=True).strip()
+            if current == component['revision']:
+                continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='dev-tools-zsh-', dir=target.parent) as temporary:
+            checkout = target if target.exists() else Path(temporary) / 'checkout'
+            if not target.exists():
+                run(['git', 'clone', '--no-checkout', '--depth=1', component['url'], str(checkout)])
+            run(['git', '-C', str(checkout), 'fetch', '--depth=1', 'origin', component['revision']])
+            run(['git', '-C', str(checkout), 'checkout', '--detach', component['revision']])
+            if checkout != target:
+                checkout.rename(target)
+
+
+def validate_zsh_profile():
+    # Ignore personal startup files while checking the profile before adoption completes.
+    command = 'eval "$(mise activate zsh)"; source "$1"; (( $+functions[p10k] && $+widgets[fzf-tab-complete] && $+functions[_zsh_autosuggest_start] && $+functions[_zsh_highlight] ))'
+    shell = ['/usr/bin/zsh', '-dfi', '-c', command, 'dev-tools', str(zsh_directory() / 'profile.zsh')]
+    run(['script', '-qec', shlex.join(shell), '/dev/null'], env=isolated_env() | {'PATH': str(home() / '.local/bin') + os.pathsep + os.environ.get('PATH', '/usr/bin:/bin')})
+
+
+def install_zsh_profile(*, apply=False):
+    if os.environ.get('ZDOTDIR'):
+        raise RuntimeError('Custom ZDOTDIR requires explicit shell configuration; no Zsh files were edited.')
+    directory = zsh_directory()
+    state_file = directory / 'profile-state.json'
+    state = json.loads(state_file.read_text()) if state_file.exists() else {}
+    target = home() / '.zshrc'
+    previous = target.read_bytes() if target.exists() else b''
+    # Only native mise activation and comments are safe to adopt automatically.
+    unmanaged = re.sub(r'(?m)^# >>> mise:activate >>>[^\n]*\neval "\$\(mise activate zsh\)"\n# <<< mise:activate <<<\n?', '', previous.decode())
+    initial = not unmanaged.strip()
+    modified = target.is_symlink() or (bool(previous) and (hashlib.sha256(previous).hexdigest() != state.get('rc') if state else not initial))
+    assets = ('profile.zsh', 'p10k.zsh', 'p10k-resize-safe.zsh')
+    for name in assets:
+        path = directory / name
+        if path.is_symlink() or (path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() != state.get(name)):
+            modified = True
+    if modified and not apply:
+        print('Personal Zsh configuration preserved. To adopt the profile: dev-tools zsh-config --apply')
+        return False
+    if modified:
+        if not sys.stdin.isatty() or input('Back up and adopt the portable Zsh profile? [y/N] ').lower() not in ('y', 'yes'):
+            raise RuntimeError('Zsh configuration unchanged.')
+    install_zsh_components()
+    if modified:
+        backup = directory / f'backup-{time.time_ns()}'
+        backup.mkdir(mode=0o700, parents=True)
+        for path in (target, *(directory / name for name in assets)):
+            if path.exists() or path.is_symlink():
+                shutil.copy2(path, backup / path.name)
+                (backup / path.name).chmod(0o600)
+        print(f'Zsh backup: {backup}')
+    directory.mkdir(parents=True, exist_ok=True)
+    for name in assets:
+        path = directory / name
+        if path.is_symlink():
+            path.unlink()
+        expected = (ROOT / 'config/zsh' / name).read_bytes()
+        if not path.exists() or path.read_bytes() != expected:
+            path.write_bytes(expected)
+    validate_zsh_profile()
+    # Replace only after dependencies succeed; preserve other shell startup files.
+    if modified:
+        target.unlink(missing_ok=True)
+        target.write_text('')
+    install_shells(mise_path(), isolated_env())
+    source = 'source "${XDG_DATA_HOME:-$HOME/.local/share}/dev-tools/zsh/profile.zsh"'
+    content = target.read_text()
+    if source not in content.splitlines():
+        target.write_text(content.rstrip() + '\n\n' + source + '\n')
+    state = {name: hashlib.sha256((directory / name).read_bytes()).hexdigest() for name in assets}
+    state['rc'] = hashlib.sha256(target.read_bytes()).hexdigest()
+    serialized = json.dumps(state, indent=2) + '\n'
+    if not state_file.exists() or state_file.read_text() != serialized:
+        state_file.write_text(serialized)
+    print('Portable Zsh profile ready.')
+    return True
+
+
+def zsh_config(args):
+    if args.apply:
+        install_zsh_profile(apply=True)
+    else:
+        print('Zsh profile: ' + ('managed installation present' if (zsh_directory() / 'profile-state.json').exists() else 'not adopted'))
+        print('To back up and adopt: dev-tools zsh-config --apply')
+    return 0
+
+
+def set_zsh_login():
+    account = pwd.getpwuid(os.getuid())
+    if account.pw_shell != '/usr/bin/zsh':
+        run(['sudo', 'chsh', '-s', '/usr/bin/zsh', account.pw_name])
+        if pwd.getpwuid(os.getuid()).pw_shell != '/usr/bin/zsh':
+            raise RuntimeError('Zsh login shell change was not applied.')
+        print('Login shell changed to Zsh. Reconnect to use it.')
 
 
 def publish_launchers(mise, *, dry_run=False):
@@ -343,12 +460,14 @@ def bootstrap(args):
         target.symlink_to(ROOT, target_is_directory=True)
     publish_launchers(mise)
     install_shells(mise, env)
+    install_zsh_profile()
     install_chrome()
     install_browser_link(mise, env)
     os.environ['PATH'] = str(home() / '.local/bin') + os.pathsep + os.environ.get('PATH', '')
     install_sfw(mise, env)
     install_herdr('core')
     check(argparse.Namespace(tools_only=True))
+    set_zsh_login()
     print('Tools ready. Open a new terminal, then run: dev-tools github; dev-tools check. Future updates: dev-tools upgrade.')
     return 0
 
@@ -586,11 +705,13 @@ def main(argv=None):
     install.add_argument('--dry-run', action='store_true')
     profile = commands.add_parser('herdr-config')
     profile.add_argument('--apply', action='store_true')
+    zsh = commands.add_parser('zsh-config')
+    zsh.add_argument('--apply', action='store_true')
     php = commands.add_parser('php-prepare')
     php.add_argument('version')
     args = parser.parse_args(argv)
     try:
-        return {'install': install_optional, 'bootstrap': bootstrap, 'check': check, 'github': github, 'upgrade': upgrade, 'herdr-config': herdr_config, 'php-prepare': prepare_php}[args.command](args)
+        return {'install': install_optional, 'bootstrap': bootstrap, 'check': check, 'github': github, 'upgrade': upgrade, 'herdr-config': herdr_config, 'zsh-config': zsh_config, 'php-prepare': prepare_php}[args.command](args)
     except KeyboardInterrupt:
         print('Cancelled. Any completed changes are retained.', file=sys.stderr)
         return 130

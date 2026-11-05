@@ -35,7 +35,7 @@ python3 - <<'STATE' > evidence/before-replay.json
 import json,os
 from pathlib import Path
 home=Path.home()
-paths=[home/p for p in ('.profile','.bashrc','.zshrc','.zshenv','.zprofile','.local/bin/sfw','.local/bin/herdr-core','.local/bin/hc','.local/bin/mise','.local/bin/dev-tools','.config/mise/conf.d/dev-tools','.local/share/dev-tools/browser/chrome')]
+paths=[home/p for p in ('.profile','.bashrc','.zshrc','.zshenv','.zprofile','.local/bin/sfw','.local/bin/herdr-core','.local/bin/hc','.local/bin/mise','.local/bin/dev-tools','.config/mise/conf.d/dev-tools','.local/share/dev-tools/browser/chrome','.local/share/dev-tools/zsh/profile.zsh','.local/share/dev-tools/zsh/p10k.zsh','.local/share/dev-tools/zsh/p10k-resize-safe.zsh','.local/share/dev-tools/zsh/profile-state.json')]
 print(json.dumps({str(p):[p.lstat().st_mtime_ns,p.readlink().as_posix() if p.is_symlink() else (__import__('hashlib').sha256(p.read_bytes()).hexdigest() if p.name == 'herdr-core' else p.read_text())] for p in paths if p.exists()},sort_keys=True))
 STATE
 cat .ci-installer | sh -s -- --yes --upgrade | tee evidence/replay.log
@@ -61,6 +61,7 @@ DEV_TOOLS_NODE_VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("mi
 DEV_TOOLS_PHP_VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("mise.toml", "rb"))["tools"]["php"])')
 bash -lic 'set -e; SFW_SKIP_UPDATE_CHECK=1 sfw --version; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
 zsh -lic 'set -e; SFW_SKIP_UPDATE_CHECK=1 sfw --version; [[ $(node --version) == "v$DEV_TOOLS_NODE_VERSION" ]]; [[ $(php -r "echo PHP_VERSION;") == "$DEV_TOOLS_PHP_VERSION" ]]'
+bash scripts/check_zsh.sh > evidence/zsh-profile.log 2>&1
 # A project must override the default and leaving it must restore the default.
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT

@@ -27,6 +27,8 @@
 "apt:php8.5-zip" = "8.5.12-1+0~20261021.27+ubuntu24.04~1.gbp1a3e8a"
 "apt:php8.5-zstd" = "0.15.2-3+0~20260622.16+ubuntu24.04~1.gbp9b7349"
 "apt:zsh" = "latest"
+"apt:fzf" = "latest"
+"apt:zoxide" = "latest"
 "apt:libasound2t64" = "latest"
 "apt:libatk-bridge2.0-0t64" = "latest"
 "apt:libatk1.0-0t64" = "latest"

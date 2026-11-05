@@ -1,0 +1,22 @@
+{
+  "oh-my-zsh": {
+    "url": "https://github.com/ohmyzsh/ohmyzsh.git",
+    "revision": "b509b1c6ed0c1ba37de12cbd37f30b2b2f61193a"
+  },
+  "powerlevel10k": {
+    "url": "https://github.com/romkatv/powerlevel10k.git",
+    "revision": "7ddd1b2715c3844275214347a3572ac1fdd6dc39"
+  },
+  "fzf-tab": {
+    "url": "https://github.com/Aloxaf/fzf-tab.git",
+    "revision": "24105b15714bfec37989ed5c5b6e60f572253019"
+  },
+  "zsh-autosuggestions": {
+    "url": "https://github.com/zsh-users/zsh-autosuggestions.git",
+    "revision": "85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5"
+  },
+  "zsh-syntax-highlighting": {
+    "url": "https://github.com/zsh-users/zsh-syntax-highlighting.git",
+    "revision": "e6683f20e5c38d3e5447f45845d04ddda75d0f23"
+  }
+}
